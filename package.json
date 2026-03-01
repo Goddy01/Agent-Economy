@@ -1,0 +1,41 @@
+{
+  "name": "agent-colony",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/index.ts",
+    "setup": "ts-node scripts/setup-devnet.ts",
+    "teardown": "ts-node scripts/teardown.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "colony:run": "ts-node src/index.ts",
+    "colony:dry": "DRY_RUN=true ts-node src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@noble/ed25519": "^3.0.0",
+    "@orca-so/common-sdk": "^0.2.2",
+    "@orca-so/whirlpools-sdk": "^0.10.0",
+    "argon2": "^0.44.0",
+    "ink": "^6.8.0",
+    "ink-text-input": "^6.0.0",
+    "openai": "^6.25.0",
+    "react": "^19.2.4",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "bigint-buffer": "npm:bigint-buffer-fixed@1.1.6"
+  }
+}
