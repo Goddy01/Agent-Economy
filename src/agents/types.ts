@@ -1,3 +1,9 @@
+/**
+ * Agent decision and stats types.
+ *
+ * Used by all agents (Accumulator, Flipper, Vault) and the dashboard.
+ * AgentDecision is the output of decide(); execute() acts on it.
+ */
 export type AgentDecisionType =
   | 'BUY'
   | 'SELL'

@@ -1,3 +1,11 @@
+/**
+ * BaseAgent — Abstract base for all trading agents (Accumulator, Flipper, Vault).
+ *
+ * Lifecycle: initialize() creates wallet; start() begins tick loop; each tick
+ * calls decide() then execute(). Decisions are logged to dashboard and (when
+ * applicable) on-chain via MemoLogger. All on-chain actions go through
+ * TransactionEngine (circuit breakers, simulation, dry run).
+ */
 import { Connection } from '@solana/web3.js';
 import { KeyVault } from '../vault/KeyVault';
 import { WalletManager } from '../wallet/WalletManager';
@@ -5,7 +13,21 @@ import { TransactionEngine } from '../transactions/TransactionEngine';
 import { MemoLogger } from '../coordination/MemoLogger';
 import { RationaleEngine } from '../ai/RationaleEngine';
 import { AgentDecision, AgentStats } from './types';
-import EventEmitter from 'events';
+import { EventEmitter } from 'events';
+
+/** Event payloads for BaseAgent emit/on (dashboard subscribes to these). */
+export interface BaseAgentEventMap {
+  initialized: [payload: { agentId: string; address: string }];
+  started: [payload: { agentId: string }];
+  stopped: [payload: { agentId: string }];
+  decision: [payload: { decision: AgentDecision; skipped: boolean }];
+  trade: [data: Record<string, unknown>];
+  memo: [payload: { agentId: string; signature: string }];
+  blocked: [payload: { agentId: string; reason: string }];
+  received: [payload: { from: string; amount: number }];
+  error: [payload: { agentId: string; error: string }];
+  warn: [message: string];
+}
 
 export interface AgentConfig {
   id: string;
@@ -13,7 +35,7 @@ export interface AgentConfig {
   tickMs: number;
 }
 
-export abstract class BaseAgent extends EventEmitter {
+export abstract class BaseAgent extends EventEmitter<BaseAgentEventMap> {
   protected id: string;
   protected name: string;
   protected connection: Connection;
@@ -74,11 +96,16 @@ export abstract class BaseAgent extends EventEmitter {
   protected abstract decide(): Promise<AgentDecision>;
   protected abstract execute(decision: AgentDecision): Promise<void>;
 
-  // ─── Tick ──────────────────────────────────────────────────────
+  // ─── Tick: decide → (optional) LLM rationale → execute → memo ───────────────
 
   private async tick(): Promise<void> {
     try {
       const decision = await this.decide();
+
+      // Always update lastAction so dashboard reflects the latest reasoning
+      // even when we ultimately decide to HOLD.
+      this.stats.lastAction = decision.reason;
+      this.stats.lastActionTime = Date.now();
 
       if (decision.type === 'HOLD') {
         this.emit('decision', { decision, skipped: true });
@@ -93,9 +120,14 @@ export abstract class BaseAgent extends EventEmitter {
 
       await this.execute(decision);
 
-      // Write decision to on-chain memo
-      await this.memoLogger.log(this.id, decision)
-        .catch(err => this.emit('warn', `Memo logging failed: ${err}`));
+      // Write decision to on-chain memo (skip when memo was already included in same tx)
+      if (decision.type !== 'TRANSFER_TO_VAULT' && decision.type !== 'SWAP') {
+        const memoSignature = await this.memoLogger.log(this.id, decision)
+          .catch(err => { this.emit('warn', `Memo logging failed: ${err}`); return null; });
+        if (memoSignature) {
+          this.emit('memo', { agentId: this.id, signature: memoSignature });
+        }
+      }
 
     } catch (err) {
       this.emit('error', { agentId: this.id, error: String(err) });

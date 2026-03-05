@@ -1,3 +1,10 @@
+/**
+ * Vault encryption: AES-256-GCM with Argon2id key derivation.
+ *
+ * The master seed is never stored in plaintext. deriveKey() turns the user
+ * passphrase into a 256-bit key; encrypt/decrypt use that for AES-GCM.
+ * Decryption errors are turned into safe messages (no passphrase/key leakage).
+ */
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 
@@ -75,10 +82,20 @@ export async function decrypt(
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(tag);
 
-  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-
-  // Zero out key material immediately
   key.fill(0);
 
-  return plaintext;
+  try {
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    return plaintext;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('Unsupported state') || msg.includes('unable to authenticate')) {
+      throw new Error(
+        'Vault decryption failed: MASTER_PASSPHRASE does not match the passphrase used when this vault was initialized. ' +
+          'Use the same passphrase from when you first ran the app, or delete the vault file to re-initialize (you will lose access to existing keys). ' +
+          'If you have the recovery phrase from setup, run: delete .agent-colony-vault.json, set RECOVERY_PHRASE in .env, then npm run restore-vault to regain the same addresses.'
+      );
+    }
+    throw err;
+  }
 }

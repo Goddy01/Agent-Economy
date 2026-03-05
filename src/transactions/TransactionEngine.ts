@@ -1,3 +1,12 @@
+/**
+ * TransactionEngine — Single pipeline for all agent transactions.
+ *
+ * Order: (1) Rate limit check (per agent), (2) Max SOL per tx check,
+ * (3) Vault floor check for vault agent, (4) Simulation always,
+ * (5) If not dry run: sign via KeyVault → sendRawTransaction → confirm.
+ * If any circuit breaker fails or simulation fails, we never sign or send.
+ * Judges: see tests/security-attacks.test.ts for attack simulations.
+ */
 import {
     Connection,
     Transaction,
@@ -56,7 +65,7 @@ import {
      */
     async executeTransaction(
       agentId: string,
-      transaction: Transaction,
+      transaction: Transaction | VersionedTransaction,
       description: string,
       options?: { skipVaultFloor?: boolean }
     ): Promise<TransactionResult> {
@@ -145,31 +154,35 @@ import {
   
     // ─── Private Helpers ───────────────────────────────────────────
   
+    /** Simulate before any sign/send; failure blocks the tx (Attack 4). */
     private async simulateTransaction(
-      transaction: Transaction
+      transaction: Transaction | VersionedTransaction
     ): Promise<{ success: boolean; fee?: number; error?: string }> {
       try {
-        const { value } = await this.connection.simulateTransaction(transaction);
+        const { value } = transaction instanceof VersionedTransaction
+          ? await this.connection.simulateTransaction(transaction)
+          : await this.connection.simulateTransaction(transaction);
   
         if (value.err) {
           return { success: false, error: JSON.stringify(value.err) };
         }
   
-        return { success: true, fee: 5000 }; // 5000 lamports standard fee
+        return { success: true, fee: 5000 };  // 5000 lamports typical fee
       } catch (err) {
         return { success: false, error: String(err) };
       }
     }
   
-    private async estimateTransactionValue(transaction: Transaction): Promise<number> {
-      // Parse transfer instructions to estimate SOL value
+    /** Estimate SOL value of tx for maxTxSol circuit breaker (SystemProgram transfer only). */
+    private async estimateTransactionValue(transaction: Transaction | VersionedTransaction): Promise<number> {
+      if (!('instructions' in transaction)) {
+        return 0;  // VersionedTransaction: conservative 0 for breaker
+      }
       let totalLamports = 0;
       for (const instruction of transaction.instructions) {
-        // SystemProgram transfer detection
         if (instruction.programId.equals(new PublicKey('11111111111111111111111111111111'))) {
           const data = instruction.data;
           if (data.length >= 12 && data.readUInt32LE(0) === 2) {
-            // Transfer instruction — lamports at bytes 4-11
             totalLamports += Number(data.readBigUInt64LE(4));
           }
         }

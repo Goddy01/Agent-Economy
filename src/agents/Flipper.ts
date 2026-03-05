@@ -1,3 +1,11 @@
+/**
+ * Flipper agent — Spread-based trading.
+ *
+ * Uses MockOracle for bid/ask spread. When spread exceeds threshold, decides
+ * SWAP (direction from buy pressure) or TRANSFER_TO_VAULT from accumulated
+ * profit. Execute: OrcaAdapter builds swap tx (or simulated transfer), memo
+ * is attached, TransactionEngine runs circuit breakers + simulation then sign/send.
+ */
 import { BaseAgent, AgentConfig } from './BaseAgent';
 import { AgentDecision } from './types';
 import { MockOracle } from '../coordination/Oracle';
@@ -9,7 +17,7 @@ import { TransactionEngine } from '../transactions/TransactionEngine';
 import { MemoLogger } from '../coordination/MemoLogger';
 import { RationaleEngine } from '../ai/RationaleEngine';
 
-const SPREAD_THRESHOLD = 0.003;   // 0.3% spread to trigger trade
+const SPREAD_THRESHOLD = 0.0005;   // 0.05% spread to trigger trade
 const TRADE_AMOUNT_SOL = 0.05;    // Small flip amounts
 const VAULT_CUT = 0.15;            // 15% to vault (higher frequency = higher cut)
 
@@ -20,6 +28,7 @@ export class Flipper extends BaseAgent {
   private totalFlipProfit = 0;
 
   constructor(
+    agentId: string,
     oracle: MockOracle,
     orca: OrcaAdapter,
     vaultAddress: string,
@@ -31,9 +40,9 @@ export class Flipper extends BaseAgent {
     rationaleEngine: RationaleEngine
   ) {
     const config: AgentConfig = {
-      id: 'flipper',
-      name: 'The Flipper',
-      tickMs: 10_000, // Every 10 seconds — aggressive
+      id: agentId,
+      name: agentId.startsWith('flipper') ? `Flipper ${agentId.replace(/^flipper/, '') || '1'}` : agentId,
+      tickMs: 20_000,
     };
     super(config, connection, vault, walletManager, txEngine, memoLogger, rationaleEngine);
     this.oracle = oracle;
@@ -45,6 +54,7 @@ export class Flipper extends BaseAgent {
     // Ensure token accounts exist for both sides of the swap pair
   }
 
+  /** Decision: insufficient balance → HOLD; wide spread → SWAP; accumulated profit → TRANSFER_TO_VAULT; else HOLD. */
   protected async decide(): Promise<AgentDecision> {
     const spread = this.oracle.getSpread('SOL/USDC');
     const balance = await this.getBalance();
@@ -107,22 +117,49 @@ export class Flipper extends BaseAgent {
 
     if (decision.type === 'SWAP') {
       try {
-        const swapResult = await this.orca.executeSwap(
+        const direction = decision.params.direction as string;
+        const amountSol = decision.params.amount as number;
+        const tx = await this.orca.buildSwapTransactionForMemo(this.id, direction, amountSol);
+        this.memoLogger.addMemoInstruction(tx, this.id, decision);  // Memo + swap in one tx
+
+        const result = await this.txEngine.executeTransaction(
           this.id,
-          decision.params.direction as string,
-          decision.params.amount as number
+          tx,
+          `Swap: ${direction} ${amountSol} SOL`
         );
+
+        const swapResult = {
+          success: result.success,
+          signature: result.signature,
+          inputAmount: amountSol,
+          outputAmount: direction === 'SOL→USDC' ? amountSol * 150 : amountSol,
+          simulated: result.dryRun ?? false,
+          error: result.error ?? (result.blockedBy ? `Blocked by circuit breaker: ${result.blockedBy}` : undefined),
+        };
 
         if (swapResult.success) {
           const profit = decision.params.expectedProfit as number;
           this.totalFlipProfit += profit;
           this.stats.pnlSOL += profit;
-          this.recordTrade(true, decision.params.amount as number);
+          this.stats.lastAction = `${decision.reason} (${amountSol.toFixed(2)} SOL)`;
+          this.recordTrade(true, amountSol);
+          if (result.signature) {
+            this.memoLogger.recordMemo(this.id, decision, result.signature);
+            this.emit('memo', { agentId: this.id, signature: result.signature });
+          }
           this.emit('trade', { type: 'SWAP', decision, result: swapResult });
+        } else {
+          this.recordTrade(false, 0);
+          const reason = swapResult.error ?? 'Swap failed (see logs)';
+          this.emit('trade', { type: 'SWAP_FAILED', reason, result: swapResult });
+          if (reason.includes('Blocked by circuit breaker')) {
+            this.emit('blocked', { agentId: this.id, reason });
+          }
         }
       } catch (err) {
         this.recordTrade(false, 0);
-        this.emit('trade', { type: 'SWAP_FAILED', error: String(err) });
+        const reason = String(err);
+        this.emit('trade', { type: 'SWAP_FAILED', reason });
       }
     }
 
@@ -133,6 +170,7 @@ export class Flipper extends BaseAgent {
         this.vaultAddress,
         contribution
       );
+      this.memoLogger.addMemoInstruction(tx, this.id, decision);
 
       const result = await this.txEngine.executeTransaction(
         this.id,
@@ -144,6 +182,17 @@ export class Flipper extends BaseAgent {
         this.totalFlipProfit -= contribution;
         this.stats.vaultContributions += contribution;
         this.recordTrade(true, contribution);
+        if (result.signature) {
+          this.memoLogger.recordMemo(this.id, decision, result.signature);
+          this.emit('memo', { agentId: this.id, signature: result.signature });
+        }
+        this.emit('trade', { type: 'VAULT_CONTRIBUTION', amount: contribution, result, reason: decision.reason });
+      } else {
+        this.recordTrade(false, 0);
+        this.emit('trade', { type: 'VAULT_CONTRIBUTION_FAILED', reason: result.blockedBy ?? result.error });
+        if (result.blockedBy) {
+          this.emit('blocked', { agentId: this.id, reason: result.blockedBy });
+        }
       }
     }
   }

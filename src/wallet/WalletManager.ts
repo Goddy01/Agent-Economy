@@ -1,3 +1,11 @@
+/**
+ * WalletManager — Agent wallet operations (no private keys here).
+ *
+ * createWallet() registers agent in KeyVault and returns address.
+ * getSolBalance / getWalletInfo read from chain (with retry for devnet).
+ * buildTransferTransaction() builds SystemProgram.transfer for vault
+ * contributions. All signing is done inside KeyVault via TransactionEngine.
+ */
 import {
     Connection,
     PublicKey,
@@ -6,13 +14,8 @@ import {
     Transaction,
     Keypair,
   } from '@solana/web3.js';
-  import {
-    getOrCreateAssociatedTokenAccount,
-    getAccount,
-    TOKEN_PROGRAM_ID,
-  } from '@solana/spl-token';
+  import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
   import { KeyVault } from '../vault/KeyVault';
-  import BigNumber from 'bignumber.js';
   
   export interface WalletInfo {
     agentId: string;
@@ -50,48 +53,58 @@ import {
   
     /**
      * Get current SOL balance in SOL (not lamports).
+     * On RPC failure (e.g. devnet rate limit), retries once then returns 0 so agents can continue.
      */
     async getSolBalance(agentId: string): Promise<number> {
       const address = new PublicKey(this.vault.getAgentPublicKey(agentId));
-      const lamports = await this.connection.getBalance(address);
+      const lamports = await this.getBalanceWithRetry(address);
       return lamports / LAMPORTS_PER_SOL;
     }
+
+    private async getBalanceWithRetry(pubkey: PublicKey, retries = 4): Promise<number> {
+      let lastErr: unknown;
+      for (let i = 0; i < retries; i++) {
+        try {
+          return await this.connection.getBalance(pubkey);
+        } catch (e) {
+          lastErr = e;
+          if (i < retries - 1) {
+            await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+          }
+        }
+      }
+      console.warn(
+        'getBalance failed for',
+        pubkey.toBase58(),
+        '- treating as 0. Common on devnet under rate limit.',
+        lastErr instanceof Error ? lastErr.message : lastErr
+      );
+      return 0;
+    }
   
-    /**
-     * Get full wallet info including all token balances.
+  /**
+     * Get full wallet info.
+     *
+     * NOTE: For this project we only care about SOL balances. To avoid
+     * hammering public devnet RPC with getParsedTokenAccountsByOwner
+     * (which is heavily rate-limited and noisy), we skip token lookups
+     * entirely and always return an empty token list.
      */
     async getWalletInfo(agentId: string): Promise<WalletInfo> {
       const address = this.vault.getAgentPublicKey(agentId);
       const pubkey = new PublicKey(address);
-  
-      const solLamports = await this.connection.getBalance(pubkey);
+
+      const solLamports = await this.getBalanceWithRetry(pubkey);
       const solBalance = solLamports / LAMPORTS_PER_SOL;
-  
-      // Fetch all token accounts
-      const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(
-        pubkey,
-        { programId: TOKEN_PROGRAM_ID }
-      );
-  
-      const tokenBalances: TokenBalance[] = tokenAccounts.value.map(account => {
-        const info = account.account.data.parsed.info;
-        return {
-          mint: info.mint,
-          symbol: 'Unknown', // Enrich from token registry in production
-          balance: info.tokenAmount.amount,
-          decimals: info.tokenAmount.decimals,
-          uiAmount: info.tokenAmount.uiAmount,
-        };
-      });
-  
+
       const info: WalletInfo = {
         agentId,
         address,
         solBalance,
-        tokenBalances,
+        tokenBalances: [],
         lastUpdated: Date.now(),
       };
-  
+
       this.walletCache.set(agentId, info);
       return info;
     }

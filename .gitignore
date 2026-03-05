@@ -83,6 +83,9 @@ web_modules/
 .env.production.local
 .env.local
 
+# Agent colony vault (encrypted keys — do not commit)
+.agent-colony-vault.json
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

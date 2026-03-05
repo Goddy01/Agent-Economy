@@ -1,6 +1,9 @@
 /**
- * Mock oracle that simulates realistic price movements.
- * In production: replace with Pyth or Switchboard.
+ * MockOracle — Simulated SOL/USDC price and spread for demo.
+ *
+ * Maintains 24h of minute-level history; tick() advances price with random
+ * walk. getPrice, get24hAverage, getSpread feed Accumulator and Flipper
+ * decision logic. In production this would be Pyth or Switchboard.
  */
 export interface PriceData {
     pair: string;
@@ -19,7 +22,8 @@ export interface PriceData {
   
   export class MockOracle {
     private prices: Map<string, number[]> = new Map();
-    private basePrice = 150; // SOL/USDC base price
+    // Demo-friendly SOL/USDC base price; keep it in a realistic $75–$85 band.
+    private basePrice = 80;
   
     constructor() {
       // Initialize with 24 hours of fake price history
@@ -27,7 +31,8 @@ export interface PriceData {
       let price = this.basePrice;
       for (let i = 0; i < 1440; i++) { // 1 per minute for 24h
         price += (Math.random() - 0.5) * 0.5; // ±$0.25 per minute
-        price = Math.max(100, Math.min(200, price)); // Clamp
+        // Keep price in a ~\$50–\$120 range so SOL hovers around \$75–\$85.
+        price = Math.max(50, Math.min(120, price)); // Clamp
         history.push(price);
       }
       this.prices.set('SOL/USDC', history);
@@ -40,7 +45,7 @@ export interface PriceData {
         // Add volatility spikes occasionally
         const spike = Math.random() < 0.05 ? (Math.random() - 0.5) * 4 : 0;
         const newPrice = last + (Math.random() - 0.5) * 1.0 + spike;
-        history.push(Math.max(100, Math.min(200, newPrice)));
+        history.push(Math.max(50, Math.min(120, newPrice)));
         if (history.length > 1440 * 2) history.shift(); // Keep 48h window
       }
     }

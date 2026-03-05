@@ -1,5 +1,7 @@
 # SKILLS.md — Agent Colony Wallet System
 
+**Per bounty requirement:** This file is for **AI agents** (e.g. Cursor, other code-assist agents) and **reviewers** to understand the agentic wallet API, safety constraints, and how to work with or extend the codebase.
+
 ## Overview
 
 This system provides autonomous, multi-agent Solana wallet infrastructure for AI agents.

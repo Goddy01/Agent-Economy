@@ -8,11 +8,12 @@ const AGENT_PERSONALITIES: Record<string, string> = {
 };
 
 /**
- * Adds a one-sentence LLM-generated rationale to each agent decision.
- * This makes the dashboard show WHY each agent did what it did.
+ * RationaleEngine — Optional LLM explanation for agent decisions.
  *
- * If no API key is set, falls back to the deterministic reason string.
- * System operates fully without this module.
+ * When OPENAI_API_KEY is set, adds a one-sentence rationale per decision
+ * (per-agent personality). If unset or on HOLD, returns the deterministic
+ * reason. Cached by (agentId, type, 30s bucket) to limit API calls.
+ * System works fully without this (dashboard still shows reason).
  */
 export class RationaleEngine {
   private client: OpenAI | null;
@@ -28,7 +29,7 @@ export class RationaleEngine {
       return decision.reason;
     }
 
-    // Cache key to avoid duplicate calls for same scenario
+    // Cache to avoid duplicate API calls for same decision bucket
     const cacheKey = `${decision.agentId}:${decision.type}:${Math.round(Date.now() / 30000)}`;
     if (this.cache.has(cacheKey)) return this.cache.get(cacheKey)!;
 

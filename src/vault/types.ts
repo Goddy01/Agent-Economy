@@ -1,3 +1,10 @@
+/**
+ * KeyVault and signing types.
+ *
+ * SigningRequest/SigningResult: used when the vault signs a transaction for an agent.
+ * AgentKeyRecord: one entry per agent (publicKey, derivation index).
+ * VaultState: persisted vault file shape (encrypted seed + agent list).
+ */
 import { Transaction, VersionedTransaction } from '@solana/web3.js';
 
 export interface SigningRequest {

@@ -1,3 +1,11 @@
+/**
+ * Vault agent — Treasury; does not initiate outbound spends.
+ *
+ * Receives SOL from Accumulator and Flipper (recordIncoming). decide() always
+ * returns HOLD with status message. execute() is no-op. TransactionEngine
+ * enforces vault floor: vault agent cannot send tx that would drop balance
+ * below VAULT_FLOOR_SOL (see Attack 3 in security-attacks.test.ts).
+ */
 import { BaseAgent, AgentConfig } from './BaseAgent';
 import { AgentDecision } from './types';
 import { Connection } from '@solana/web3.js';
@@ -7,7 +15,7 @@ import { TransactionEngine } from '../transactions/TransactionEngine';
 import { MemoLogger } from '../coordination/MemoLogger';
 import { RationaleEngine } from '../ai/RationaleEngine';
 
-const FLOOR_SOL = parseFloat(process.env.VAULT_FLOOR_SOL ?? '5.0');
+const FLOOR_SOL = parseFloat(process.env.VAULT_FLOOR_SOL ?? '5.0');  // Circuit breaker: vault balance cannot go below this
 
 export class VaultAgent extends BaseAgent {
   private incomingQueue: Array<{ from: string; amount: number; timestamp: number }> = [];
@@ -54,8 +62,8 @@ export class VaultAgent extends BaseAgent {
   }
 
   protected async execute(_decision: AgentDecision): Promise<void> {
-    // Vault never executes outbound transactions autonomously
-    // Its spending is explicitly blocked by TransactionEngine circuit breaker
+    // Vault never initiates outbound spends. Any attempt would still go through
+    // TransactionEngine, which blocks vault txs that would drop balance below floor.
   }
 
   getVaultStatus(): {

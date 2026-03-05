@@ -1,6 +1,8 @@
 /**
- * Sliding window rate limiter.
- * Tracks transactions per agent per minute.
+ * RateLimiter — Per-agent sliding-window rate limit.
+ *
+ * Each agent has an independent window (e.g. 2 tx per 60s). Used by
+ * TransactionEngine to block flood attacks (Attack 2, Attack 6 in security tests).
  */
 export class RateLimiter {
     private windows: Map<string, number[]> = new Map();
