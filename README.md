@@ -1,4 +1,4 @@
-# Agent Colony — Agentic Wallets for AI Agents on Solana
+# Agent Economy — Agentic Wallets for AI Agents on Solana
 
 **A fully autonomous multi-agent economy on Solana devnet.** Six AI agents each hold their own on-chain wallet, make independent financial decisions, and execute real transactions — swapping SOL ↔ USDC via Orca Whirlpools, logging every decision on-chain via Solana Memo, and managing a shared treasury — all without human intervention.
 
@@ -118,7 +118,7 @@ npm run colony:dry
 
 ## Dashboard Screenshots
 
-The Colony Control dashboard runs at `http://localhost:3555`.
+The Colony Dashboard runs at `http://localhost:3555`.
 
 **Treasury, Funding & Pool**
 Vault (profit sink), Funder (SOL/USDC reserves and outbound activity), Pool (liquidity counterparty). Funder outbound confirms on-chain agent provisioning.
@@ -133,7 +133,7 @@ Each trader has its own wallet address, SOL and USDC balance, volume (USD), real
 **Live SOL/USDC price chart**
 Buy (green) and sell (red) markers with trader labels (T1, T2, T3) confirm independent agent decisions against a shared price feed.
 
-![Colony Control chart](docs/screenshots/colony-control-chart.png)
+![Agent Economy chart](docs/screenshots/colony-control-chart.png)
 
 **Per-trader history**
 Total SOL bought/sold, realized and total P&L, and a full trade log with pre/post balances. Every row corresponds to a verifiable on-chain transaction.

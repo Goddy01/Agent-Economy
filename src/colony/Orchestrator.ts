@@ -1,5 +1,5 @@
 /**
- * Orchestrator - Wires and runs the full agent colony.
+ * Orchestrator - Wires and runs the full Agent Economy.
  *
  * Loads MASTER_PASSPHRASE from .env, creates KeyVault, WalletManager,
  * TransactionEngine (circuit breakers), MemoLogger, Oracle, OrcaAdapter,
@@ -109,7 +109,7 @@ export class Orchestrator {
 
   async run(): Promise<void> {
     const agentIds = getAgentIds();
-    console.log(`Initializing Agent Colony (${agentIds.length} agents)...\n`);
+    console.log(`Initializing Agent Economy (${agentIds.length} agents)...\n`);
 
     this.dashboard.setAgentIds(agentIds);
     this.dashboard.setSessionId(this.sessionId);

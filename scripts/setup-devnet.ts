@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const vault = new KeyVault(passphrase);
   const walletManager = new WalletManager(connection, vault);
 
-  console.log('Agent Colony devnet setup\n');
+  console.log('Agent Economy devnet setup\n');
 
   // ── 1. Initialize KeyVault if not already initialized ─────────────
   try {

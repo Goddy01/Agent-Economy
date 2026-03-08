@@ -96,7 +96,7 @@ const HTML_PAGE = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Agent Colony - Solana Devnet</title>
+  <title>AI Agent Economy - Solana Devnet</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -221,7 +221,7 @@ const HTML_PAGE = `<!DOCTYPE html>
 <body>
   <header class="topbar">
     <div class="topbar-left">
-      <span class="logo">Agent Colony</span>
+      <span class="logo">Agent Economy</span>
       <span style="color:#6e7681;font-size:0.875rem;">Solana Blockchain</span>
     </div>
     <div class="topbar-right" id="header">

@@ -1,13 +1,13 @@
-# Agent Colony - Setup & Demo Guide
+# Agent Economy - Setup & Demo Guide
 
 > **For bounty judges:** Jump straight to [Judge Quickstart](#judge-quickstart). Total time to a running demo: **~5–8 minutes**.
 > For a deep dive into the wallet design, security model, and AI agent architecture, see [DEEP_DIVE.md](./DEEP_DIVE.md).
 
 ---
 
-## What is Agent Colony?
+## What is Agent Economy?
 
-Agent Colony is an autonomous multi-agent economy running on **Solana devnet**. A set of AI-driven agents - vault, funder, liquidity pool, and traders - each hold their own on-chain wallets, make independent financial decisions, and execute real transactions. Traders swap SOL ↔ USDC via **Orca Whirlpools**, the pool manages liquidity, and the funder tops up agent balances automatically. Every decision is logged on-chain via Solana's Memo program, creating a fully verifiable audit trail. A live React dashboard shows balances, P&L, trading history, and on-chain addresses in real time.
+Agent Economy is an autonomous multi-agent economy running on **Solana devnet**. A set of AI-driven agents - vault, funder, liquidity pool, and traders - each hold their own on-chain wallets, make independent financial decisions, and execute real transactions. Traders swap SOL ↔ USDC via **Orca Whirlpools**, the pool manages liquidity, and the funder tops up agent balances automatically. Every decision is logged on-chain via Solana's Memo program, creating a fully verifiable audit trail. A live React dashboard shows balances, P&L, trading history, and on-chain addresses in real time.
 
 **Default colony:** 6 agents (vault + funder + pool + 3 traders). Fully scalable at runtime.
 

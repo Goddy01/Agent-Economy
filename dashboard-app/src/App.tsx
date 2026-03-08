@@ -1231,7 +1231,7 @@ export default function App() {
                 <Cpu className="w-5 h-5 text-black" />
               </div>
               <div>
-                <h1 className="text-lg font-bold tracking-tight text-white leading-none">COLONY CONTROL</h1>
+                <h1 className="text-lg font-bold tracking-tight text-white leading-none">AGENT ECONOMY</h1>
                 <p className="text-[10px] text-emerald-500/60 font-mono tracking-widest uppercase mt-1">Solana Devnet v1.0.4</p>
               </div>
             </div>

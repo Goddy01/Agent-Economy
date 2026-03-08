@@ -1,5 +1,5 @@
 /**
- * Agent Colony - Main entry point.
+ * Agent Economy - Main entry point.
  *
  * Starts the Orchestrator, which initializes the encrypted KeyVault, creates
  * agent wallets (vault, funder, pool, traders), and runs the trading colony with
