@@ -97,7 +97,7 @@ Agents tick on the interval set by **COLONY_TICK_MS** (default 10–60s per agen
 | **npm run sweep-to-funder**              | Move SOL to the funder wallet.                                                                             |
 | **npm run show-agent-addresses**         | Print all agent wallet addresses.                                                                          |
 | **npm run check-balances**               | Show SOL and USDC (if configured) for all agents.                                                          |
-| **npm run teardown --** <WALLET-ADDRESS> | Sweep agent SOL to address and remove local vault. Use `--dry-run` to preview.                             |
+| **npm run teardown -- <WALLET-ADDRESS>** | Sweep agent SOL to address and remove local vault. Use `--dry-run` to preview.                             |
 | **npm run colony:stress**                | Run with many traders in DRY_RUN (scale test, no tx sent).                                                 |
 | **npm test**                             | Run test suite (including circuit breakers).                                                               |
 | **npm run test:security**                | Run security and transaction tests.                                                                        |
