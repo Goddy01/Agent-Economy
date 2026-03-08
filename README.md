@@ -82,12 +82,6 @@ Contributions from traders (SOL sent to the vault) with timestamps and transacti
 
 ![Vault profit history](docs/screenshots/vault-profit-history.png)
 
-**Global trading history table**
-
-All colony trades in one table: side, amount SOL, price, cost/revenue USD, pre/post balances, and TX link.
-
-![Trading history table](docs/screenshots/trading-history-table.png)
-
 ---
 
 ## Architecture (one sentence)
