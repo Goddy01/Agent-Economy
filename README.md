@@ -56,7 +56,7 @@ Agent Economy is an autonomous multi-agent economy running on **Solana devnet**.
 
 **Colony-scale from day one.** The default setup runs 6 independent agents with their own wallets, balances, and decision logic. Add traders at runtime via the dashboard - the funder automatically provisions each one with SOL and USDC on-chain.
 
-**Observable and verifiable.** Every agent wallet address is shown on the dashboard and links directly to Solscan. P&L, volume, trade history, and funder outbound are all live. Nothing requires trusting the UI - every claim is on-chain.
+**Observable and verifiable.** Every agent wallet address is shown on the dashboard and links directly to Solscan. P&L, volume, and trade history are all live. Nothing requires trusting the UI - every claim is on-chain.
 
 ---
 
@@ -156,7 +156,6 @@ Open **[http://localhost:3555](http://localhost:3555)**. Within **1-2 minutes** 
 | On-chain transactions | Click any wallet address -> opens Solscan devnet |
 | Memo-tagged decisions | Solscan tx detail -> "Memo" instruction shows agent rationale |
 | Orca swap transactions | Trader card history; verify on Solscan as Orca Whirlpools program calls |
-| Funder outbound SOL | Treasury panel -> "Outbound" field increments as agents are funded |
 
 **Tick cadence:** Agents act on the interval set by `COLONY_TICK_MS` (default varies by agent type, typically 10-60s). Allow 1-2 minutes after startup for the first round of decisions.
 
@@ -184,7 +183,7 @@ Each trader added from the dashboard is funded automatically by the funder (0.2 
 ## Dashboard Screenshots
 
 **Treasury, Funding & Pool**
-Vault (profit sink), Funder (SOL/USDC reserves and outbound activity), Pool (liquidity counterparty). Funder outbound confirms on-chain agent provisioning.
+Vault (profit sink), Funder (SOL/USDC reserves), Pool (liquidity counterparty). 
 
 ![Treasury, Funding & Pool](docs/screenshots/treasury-funding-pool.png)
 
