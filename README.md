@@ -1,8 +1,8 @@
-# Agent Economy — Agentic Wallets for AI Agents on Solana
+# Agent Economy -Agentic Wallets for AI Agents on Solana
 
-**A fully autonomous multi-agent economy on Solana devnet.** Six AI agents each hold their own on-chain wallet, make independent financial decisions, and execute real transactions — swapping SOL ↔ USDC via Orca Whirlpools, logging every decision on-chain via Solana Memo, and managing a shared treasury — all without human intervention.
+**A fully autonomous multi-agent economy on Solana devnet.** Six AI agents each hold their own on-chain wallet, make independent financial decisions, and execute real transactions -swapping SOL ↔ USDC via Orca Whirlpools, logging every decision on-chain via Solana Memo, and managing a shared treasury -all without human intervention.
 
-**Bounty:** [DeFi Developer Challenge — Agentic Wallets for AI Agents](https://superteam.fun/earn/listing/defi-developer-challenge-agentic-wallets-for-ai-agents) (Superteam Nigeria)
+**Bounty:** [DeFi Developer Challenge -Agentic Wallets for AI Agents](https://superteam.fun/earn/listing/defi-developer-challenge-agentic-wallets-for-ai-agents) (Superteam Nigeria)
 
 **Built by:** [Goddy01](https://github.com/Goddy01)
 
@@ -28,26 +28,26 @@
 
 | Requirement | Delivered |
 |---|---|
-| **Create a wallet programmatically** | `WalletManager.createWallet(agentId)` + HD key derivation via `KeyVault.registerAgent()` — idempotent, created on first use |
-| **Sign transactions automatically** | `KeyVault.sign(SigningRequest)` — agents sign by agent ID only; private keys never leave the vault |
+| **Create a wallet programmatically** | `WalletManager.createWallet(agentId)` + HD key derivation via `KeyVault.registerAgent()` -idempotent, created on first use |
+| **Sign transactions automatically** | `KeyVault.sign(SigningRequest)` -agents sign by agent ID only; private keys never leave the vault |
 | **Hold SOL and USDC (SPL)** | Every agent holds SOL and USDC. USDC is the platform stablecoin. Run `npm run create-usdc-token` after setup for the full demo. |
 | **Interact with a real protocol** | **Orca Whirlpools** (devnet swaps), **Solana Memo Program** (on-chain decision audit trail), **System Program** (SOL transfers between agents) |
-| **Deep dive** | [DEEP_DIVE.md](./DEEP_DIVE.md) — wallet design, security model, AI agent interaction |
+| **Deep dive** | [DEEP_DIVE.md](./DEEP_DIVE.md) -wallet design, security model, AI agent interaction |
 | **Open-source with setup docs** | This repo; [SETUP.md](./SETUP.md) |
-| **SKILLS.md** | [SKILLS.md](./SKILLS.md) — wallet API, safety constraints, and how to extend with new agents |
-| **Working prototype on devnet** | Yes — `npm run setup && npm run start`; dashboard at `http://localhost:3555` |
+| **SKILLS.md** | [SKILLS.md](./SKILLS.md) -wallet API, safety constraints, and how to extend with new agents |
+| **Working prototype on devnet** | Yes -`npm run setup && npm run start`; dashboard at `http://localhost:3555` |
 
 ---
 
 ## What Makes This Submission Stand Out
 
-**Key isolation by design.** Private keys exist in exactly one place — the encrypted `KeyVault`. Every agent, every protocol adapter, every script requests signing by agent ID. Nothing else ever touches a key. This isn't a best-practice aspiration; it's enforced architecturally.
+**Key isolation by design.** Private keys exist in exactly one place -the encrypted `KeyVault`. Every agent, every protocol adapter, every script requests signing by agent ID. Nothing else ever touches a key. This isn't a best-practice aspiration; it's enforced architecturally.
 
 **Real protocol interaction, no mocks.** Traders execute live Orca Whirlpools swaps on devnet. Every agent decision is written to chain via Solana Memo, creating a tamper-evident audit trail you can inspect on Solscan.
 
-**Colony-scale from day one.** The default setup runs 6 independent agents with their own wallets, balances, and decision logic. Add traders at runtime via the dashboard — the funder automatically provisions each one with SOL and USDC on-chain.
+**Colony-scale from day one.** The default setup runs 6 independent agents with their own wallets, balances, and decision logic. Add traders at runtime via the dashboard -the funder automatically provisions each one with SOL and USDC on-chain.
 
-**Observable and verifiable.** Every agent wallet address is shown on the dashboard and links directly to Solscan. P&L, volume, trade history, and funder outbound are all live. Nothing requires trusting the UI — every claim is on-chain.
+**Observable and verifiable.** Every agent wallet address is shown on the dashboard and links directly to Solscan. P&L, volume, trade history, and funder outbound are all live. Nothing requires trusting the UI -every claim is on-chain.
 
 ---
 
@@ -60,7 +60,7 @@ Agent logic (decision)
             → Solana devnet               # real txs: Orca swaps, Memo logs, SOL transfers
 ```
 
-The vault is the security perimeter. Agents, adapters, and scripts sit entirely outside it — they request signatures, never keys. See [DEEP_DIVE.md](./DEEP_DIVE.md) for the full security model and key derivation design.
+The vault is the security perimeter. Agents, adapters, and scripts sit entirely outside it -they request signatures, never keys. See [DEEP_DIVE.md](./DEEP_DIVE.md) for the full security model and key derivation design.
 
 ---
 
@@ -141,7 +141,7 @@ Total SOL bought/sold, realized and total P&L, and a full trade log with pre/pos
 ![Trader trading history](docs/screenshots/trader-trading-history.png)
 
 **Vault profit history**
-SOL contributions from traders with timestamps and Solscan transaction links — on-chain proof of agent-to-vault profit flow.
+SOL contributions from traders with timestamps and Solscan transaction links -on-chain proof of agent-to-vault profit flow.
 
 ![Vault profit history](docs/screenshots/vault-profit-history.png)
 
@@ -151,13 +151,13 @@ SOL contributions from traders with timestamps and Solscan transaction links —
 
 | Directory | What lives here |
 |---|---|
-| `src/vault/` | `KeyVault` — encrypted HD seed (AES-256-GCM + Argon2id). **The only place private keys exist.** All signing flows through here. |
-| `src/wallet/` | `WalletManager` — create wallets, query balances, build transfers. Never holds keys directly. |
+| `src/vault/` | `KeyVault` -encrypted HD seed (AES-256-GCM + Argon2id). **The only place private keys exist.** All signing flows through here. |
+| `src/wallet/` | `WalletManager` -create wallets, query balances, build transfers. Never holds keys directly. |
 | `src/agents/` | Agent logic: `TraderAgent`, `FunderAgent`, `PoolAgent`, `VaultAgent`. Extend `BaseAgent` to add new agent types. |
-| `src/transactions/` | `TransactionEngine` — circuit breakers, simulate-before-send, rate limiting, broadcast. |
+| `src/transactions/` | `TransactionEngine` -circuit breakers, simulate-before-send, rate limiting, broadcast. |
 | `src/coordination/` | `MemoLogger` (on-chain decision log), `Oracle` (price feed) |
 | `src/dex/` | `OrcaAdapter` (Whirlpools swaps), `PoolAdapter`, `TraderAdapter` |
-| `src/dashboard/` | `WebDashboard` — HTTP server + live React UI |
+| `src/dashboard/` | `WebDashboard` -HTTP server + live React UI |
 | `scripts/` | Setup, vault restore, USDC token creation, teardown, balance checks |
 
 ---
