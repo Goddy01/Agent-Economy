@@ -93,7 +93,7 @@ Agent logic decides â†’ requests signing from KeyVault (only place keys exist) â
 ## Quick start (devnet)
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/Goddy01/Agent-Economy.git
 cd agent-colony
 npm install
 
