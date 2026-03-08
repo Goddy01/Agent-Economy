@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Check for accidental secrets in source code (no .env — we never commit that).
+ * Check for accidental secrets in source code (no .env - we never commit that).
  * Scans src/ and scripts/ for patterns: OpenAI sk-*, api_key="...", password="...", Bearer tokens.
  * Used in npm run security:check. Exits 0 if clean, 1 and prints matches if found.
  *

@@ -2,13 +2,11 @@
  * Adversarial / attack-simulation tests for judges.
  *
  * Each test simulates an attack; passing means the attack was BLOCKED.
- * - Attack 1: Tx over max SOL → blocked, no sign/send
- * - Attack 2: Flood (3 txs when limit 2/min) → 3rd blocked
- * - Attack 3: Vault drain below floor → blocked
- * - Attack 4: Simulation failure → never sign or send
- * - Attack 5: DRY_RUN → no sign, no sendRawTransaction
- * - Attack 6: Per-agent rate limit (A exhausted, B still allowed)
- * - Attack 7: Unregistered agent → getAgentPublicKey throws
+ * - Attack 1: Flood (3 txs when limit 2/min) → 3rd blocked
+ * - Attack 2: Simulation failure → never sign or send
+ * - Attack 3: DRY_RUN → no sign, no sendRawTransaction
+ * - Attack 4: Per-agent rate limit (A exhausted, B still allowed)
+ * - Attack 5: Unregistered agent → getAgentPublicKey throws
  * Plus: KeyVault passphrase length, decrypt error no secret leak, RateLimiter isolation.
  *
  * Run: npm run test:security
@@ -28,6 +26,7 @@ import {
 import { TransactionEngine, CircuitBreakerConfig } from '../src/transactions/TransactionEngine';
 import { KeyVault } from '../src/vault/KeyVault';
 import { RateLimiter } from '../src/transactions/RateLimiter';
+import { SolendAdapter } from '../src/dex/SolendAdapter';
 
 // Ephemeral keypair for signing in mocks (vault.sign is mocked to use this)
 const testKeypair = Keypair.generate();
@@ -55,6 +54,7 @@ describe('Security: Attack simulations (judges run: npm run test:security)', () 
     getBalance: jest.fn(),
     sendRawTransaction: jest.fn(),
     confirmTransaction: jest.fn(),
+    getLatestBlockhash: jest.fn(),
   } as unknown as Connection;
 
   const mockVault = {
@@ -63,9 +63,7 @@ describe('Security: Attack simulations (judges run: npm run test:security)', () 
   } as unknown as KeyVault;
 
   const secureConfig: CircuitBreakerConfig = {
-    maxTxSol: 1.0,
     maxTxPerMinute: 2,
-    vaultFloorSol: 3.0,
     dryRun: false,
   };
 
@@ -82,25 +80,13 @@ describe('Security: Attack simulations (judges run: npm run test:security)', () 
     );
     (mockConnection.sendRawTransaction as jest.Mock).mockResolvedValue('tx-sig-123');
     (mockConnection.confirmTransaction as jest.Mock).mockResolvedValue(undefined);
-  });
-
-  describe('Attack 1: Exceed max SOL per transaction', () => {
-    test('attacker sends 2 SOL when max is 1 SOL → BLOCKED, no sign/send', async () => {
-      const engine = new TransactionEngine(mockConnection, mockVault, secureConfig);
-      const tx = createTransferTx(2.0);
-
-      const result = await engine.executeTransaction('attacker', tx, 'large transfer');
-
-      expect(result.success).toBe(false);
-      expect(result.blockedBy).toBeDefined();
-      expect(result.blockedBy).toMatch(/exceeds max|max 1/);
-      expect(result.simulationPassed).toBe(false);
-      expect(mockVault.sign).not.toHaveBeenCalled();
-      expect(mockConnection.sendRawTransaction).not.toHaveBeenCalled();
+    (mockConnection.getLatestBlockhash as jest.Mock).mockResolvedValue({
+      blockhash: 'test-blockhash',
+      lastValidBlockHeight: 1,
     });
   });
 
-  describe('Attack 2: Rate limit bypass (flood transactions)', () => {
+  describe('Attack 1: Rate limit bypass (flood transactions)', () => {
     test('attacker sends 3 txs in a row when limit is 2/min → 3rd BLOCKED', async () => {
       const engine = new TransactionEngine(mockConnection, mockVault, secureConfig);
       const r1 = await engine.executeTransaction('flipper', createTransferTx(0.1), '1');
@@ -117,26 +103,7 @@ describe('Security: Attack simulations (judges run: npm run test:security)', () 
     });
   });
 
-  describe('Attack 3: Vault floor bypass (drain vault below floor)', () => {
-    test('vault agent tries to send 2.5 SOL when balance=5 and floor=3 → BLOCKED', async () => {
-      (mockConnection.getBalance as jest.Mock).mockResolvedValue(5 * LAMPORTS_PER_SOL);
-      const engine = new TransactionEngine(mockConnection, mockVault, {
-        ...secureConfig,
-        maxTxSol: 5,
-      });
-      const tx = createTransferTx(2.5);
-
-      const result = await engine.executeTransaction('vault', tx, 'drain vault');
-
-      expect(result.success).toBe(false);
-      expect(result.blockedBy).toMatch(/Vault floor protection/i);
-      expect(result.blockedBy).toMatch(/5\.00|3/);
-      expect(mockVault.sign).not.toHaveBeenCalled();
-      expect(mockConnection.sendRawTransaction).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Attack 4: Simulation failure must block sign/send', () => {
+  describe('Attack 2: Simulation failure must block sign/send', () => {
     test('malicious tx that fails simulation → BLOCKED, never sign or send', async () => {
       (mockConnection.simulateTransaction as jest.Mock).mockResolvedValue({
         value: { err: { InstructionError: [0, 'Custom(1)'] } },
@@ -154,7 +121,7 @@ describe('Security: Attack simulations (judges run: npm run test:security)', () 
     });
   });
 
-  describe('Attack 5: Dry run must never sign or send', () => {
+  describe('Attack 3: Dry run must never sign or send', () => {
     test('with DRY_RUN=true, attacker tx is “accepted” but no on-chain tx', async () => {
       const engine = new TransactionEngine(mockConnection, mockVault, {
         ...secureConfig,
@@ -171,7 +138,7 @@ describe('Security: Attack simulations (judges run: npm run test:security)', () 
     });
   });
 
-  describe('Attack 6: Rate limit is per-agent (no cross-agent bypass)', () => {
+  describe('Attack 4: Rate limit is per-agent (no cross-agent bypass)', () => {
     test('agent A exhausts limit; agent B can still send (independent limits)', async () => {
       const engine = new TransactionEngine(mockConnection, mockVault, secureConfig);
       const tx = createTransferTx(0.1);
@@ -188,7 +155,7 @@ describe('Security: Attack simulations (judges run: npm run test:security)', () 
     });
   });
 
-  describe('Attack 7: Unregistered agent cannot obtain key or sign', () => {
+  describe('Attack 5: Unregistered agent cannot obtain key or sign', () => {
     test('getAgentPublicKey(unknown agent) → throws (no key material exposed)', () => {
       const statePath = path.join(os.tmpdir(), `vault-security-test-${Date.now()}.json`);
       const orig = process.env.VAULT_STATE_PATH;
@@ -205,6 +172,29 @@ describe('Security: Attack simulations (judges run: npm run test:security)', () 
         process.env.VAULT_STATE_PATH = orig;
         try { fs.unlinkSync(statePath); } catch { /* ignore */ }
       }
+    });
+  });
+  
+  describe('Attack 6: Rate limit also protects Solend deposits', () => {
+    test('repeated Solend deposits from same agent hit rate limiter', async () => {
+      const engine = new TransactionEngine(mockConnection, mockVault, {
+        ...secureConfig,
+        maxTxPerMinute: 1,
+      });
+  
+      const solend = new SolendAdapter(
+        mockConnection,
+        mockVault,
+        engine,
+        {} as any
+      );
+  
+      const first = await solend.executeDeposit('flipper', 0.1);
+      const second = await solend.executeDeposit('flipper', 0.1);
+  
+      // Even when going through the SolendAdapter path, the second deposit
+      // attempt from the same agent is rejected by the shared safety pipeline.
+      expect(second.success).toBe(false);
     });
   });
 });

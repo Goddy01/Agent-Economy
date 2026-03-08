@@ -1,0 +1,12 @@
+{
+  "agents": [
+    {
+      "id": "trader4",
+      "kind": "trader",
+      "strategy": {
+        "tradeAmountSol": 0.02,
+        "spreadThreshold": 0.001
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 /**
- * MemoLogger — On-chain audit trail for agent decisions.
+ * MemoLogger - On-chain audit trail for agent decisions.
  *
  * Writes agent decisions to Solana Memo program so every action is verifiable
  * on-chain. addMemoInstruction() attaches a memo to an existing tx (e.g.
@@ -71,6 +71,13 @@ import {
     signature: string;
     timestamp: number;
   }
+
+  /** Optional context for SWAP memos so the $ value at buy/sell is verifiable on-chain. */
+  export interface SwapMemoContext {
+    amountSol: number;
+    priceUsd: number;
+    side: 'buy' | 'sell';
+  }
   
   export class MemoLogger {
     private connection: Connection;
@@ -90,16 +97,30 @@ import {
     /**
      * Add a memo instruction to an existing transaction (e.g. transfer to vault).
      * Use this to combine memo and transfer in a single on-chain transaction.
+     * For SWAP decisions, pass swapContext to include dollar value (amountSol * priceUsd) in the memo.
      */
-    addMemoInstruction(tx: Transaction, agentId: string, decision: AgentDecision): void {
-      const memoData = JSON.stringify({
+    addMemoInstruction(
+      tx: Transaction,
+      agentId: string,
+      decision: AgentDecision,
+      swapContext?: SwapMemoContext
+    ): void {
+      const base: Record<string, unknown> = {
         agent: agentId,
         type: decision.type,
         reason: decision.reason.substring(0, 100),
         confidence: decision.confidence,
         ts: decision.timestamp,
         sessionId: this.sessionId,
-      });
+      };
+      if (decision.type === 'SWAP' && swapContext) {
+        const usdValue = swapContext.amountSol * swapContext.priceUsd;
+        base.amountSol = swapContext.amountSol;
+        base.priceUsd = swapContext.priceUsd;
+        base.side = swapContext.side;
+        base.usdValue = Math.round(usdValue * 100) / 100;
+      }
+      const memoData = JSON.stringify(base);
       const agentPubkey = new PublicKey(this.vault.getAgentPublicKey(agentId));
       tx.add(new TransactionInstruction({
         keys: [{ pubkey: agentPubkey, isSigner: true, isWritable: false }],
@@ -153,7 +174,7 @@ import {
             return sig;
           });
         } catch (confirmErr: unknown) {
-          // Timeout doesn't mean the tx failed — poll once more and use signature if it landed
+          // Timeout doesn't mean the tx failed - poll once more and use signature if it landed
           if (isConfirmTimeoutError(confirmErr)) {
             const sig = (confirmErr as Error & { signature: string }).signature;
             const landed = await pollConfirmation(this.connection, sig);
@@ -172,7 +193,7 @@ import {
         this.logs.push({ agentId, decision, signature, timestamp: Date.now() });
         return signature;
       } catch (err) {
-        // Memo logging failure is non-critical — log but don't throw
+        // Memo logging failure is non-critical - log but don't throw
         console.warn(`Memo log failed for ${agentId}:`, err);
         return null;
       }

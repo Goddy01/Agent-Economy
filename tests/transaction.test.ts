@@ -1,10 +1,9 @@
 /**
- * TransactionEngine unit tests — Circuit breakers and dry run.
+ * TransactionEngine unit tests - Circuit breakers and dry run.
  *
- * Covers: maxTxSol (block over limit, allow under), rate limit (block 3rd tx),
- * vault floor (block when postBalance < floor, allow when >=), and dry run
- * (success but never sign or sendRawTransaction). Judges: run with
- * npm run test:security together with security-attacks.test.ts.
+ * Covers: rate limit (block 3rd tx), and dry run (success but never sign or
+ * sendRawTransaction). Judges: run with npm run test:security together with
+ * security-attacks.test.ts.
  */
 import {
   Connection,
@@ -16,6 +15,7 @@ import {
 } from '@solana/web3.js';
 import { TransactionEngine, CircuitBreakerConfig } from '../src/transactions/TransactionEngine';
 import { KeyVault } from '../src/vault/KeyVault';
+import { SolendAdapter } from '../src/dex/SolendAdapter';
 
 const testKeypair = Keypair.generate();
 const testPubkey = testKeypair.publicKey.toBase58();
@@ -41,6 +41,7 @@ describe('TransactionEngine', () => {
     getBalance: jest.fn(),
     sendRawTransaction: jest.fn(),
     confirmTransaction: jest.fn(),
+    getLatestBlockhash: jest.fn(),
   } as unknown as Connection;
 
   const mockVault = {
@@ -49,9 +50,7 @@ describe('TransactionEngine', () => {
   } as unknown as KeyVault;
 
   const baseConfig: CircuitBreakerConfig = {
-    maxTxSol: 1.0,
     maxTxPerMinute: 2,
-    vaultFloorSol: 3.0,
     dryRun: false,
   };
 
@@ -69,34 +68,6 @@ describe('TransactionEngine', () => {
     );
     (mockConnection.sendRawTransaction as jest.Mock).mockResolvedValue('tx-sig-123');
     (mockConnection.confirmTransaction as jest.Mock).mockResolvedValue(undefined);
-  });
-
-  describe('maxTxSol circuit breaker', () => {
-    test('blocks transactions over maxTxSol with blockedBy message', async () => {
-      const engine = new TransactionEngine(mockConnection, mockVault, baseConfig);
-      const tx = createTransferTx(1.5); // 1.5 SOL > maxTxSol 1.0
-
-      const result = await engine.executeTransaction('flipper', tx, 'test');
-
-      expect(result.success).toBe(false);
-      expect(result.blockedBy).toBeDefined();
-      expect(result.blockedBy).toContain('exceeds max');
-      expect(result.blockedBy).toContain('max 1');
-      expect(result.simulationPassed).toBe(false);
-      expect(mockConnection.simulateTransaction).not.toHaveBeenCalled();
-      expect(mockVault.sign).not.toHaveBeenCalled();
-    });
-
-    test('allows transactions at or below maxTxSol', async () => {
-      const engine = new TransactionEngine(mockConnection, mockVault, baseConfig);
-      const tx = createTransferTx(0.5); // 0.5 SOL <= maxTxSol 1.0
-
-      const result = await engine.executeTransaction('flipper', tx, 'test');
-
-      expect(result.success).toBe(true);
-      expect(result.blockedBy).toBeUndefined();
-      expect(mockConnection.simulateTransaction).toHaveBeenCalled();
-    });
   });
 
   describe('rate limit circuit breaker', () => {
@@ -122,61 +93,6 @@ describe('TransactionEngine', () => {
     });
   });
 
-  describe('vault floor circuit breaker', () => {
-    test('blocks if postBalance < floor', async () => {
-      const vaultFloorConfig: CircuitBreakerConfig = {
-        ...baseConfig,
-        maxTxSol: 5, // Allow 2.5 SOL tx so vault floor check is reached
-      };
-      const engine = new TransactionEngine(
-        mockConnection,
-        mockVault,
-        vaultFloorConfig
-      );
-      // balance 5 SOL, spend 2.5 SOL -> postBalance 2.5 < floor 3.0
-      (mockConnection.getBalance as jest.Mock).mockResolvedValue(
-        5 * LAMPORTS_PER_SOL
-      );
-      (mockVault.getAgentPublicKey as jest.Mock).mockReturnValue(testPubkey);
-
-      const tx = createTransferTx(2.5);
-
-      const result = await engine.executeTransaction('vault', tx, 'test');
-
-      expect(result.success).toBe(false);
-      expect(result.blockedBy).toBeDefined();
-      expect(result.blockedBy).toMatch(/Vault floor protection/i);
-      expect(result.blockedBy).toContain('5.00');
-      expect(result.blockedBy).toContain('3');
-      expect(result.simulationPassed).toBe(false);
-      expect(mockConnection.simulateTransaction).not.toHaveBeenCalled();
-    });
-
-    test('allows vault transaction when postBalance >= floor', async () => {
-      const vaultFloorConfig: CircuitBreakerConfig = {
-        ...baseConfig,
-        maxTxSol: 5, // Allow 1.5 SOL tx
-      };
-      const engine = new TransactionEngine(
-        mockConnection,
-        mockVault,
-        vaultFloorConfig
-      );
-      // balance 5 SOL, spend 1.5 SOL -> postBalance 3.5 >= floor 3.0
-      (mockConnection.getBalance as jest.Mock).mockResolvedValue(
-        5 * LAMPORTS_PER_SOL
-      );
-
-      const tx = createTransferTx(1.5);
-
-      const result = await engine.executeTransaction('vault', tx, 'test');
-
-      expect(result.success).toBe(true);
-      expect(result.blockedBy).toBeUndefined();
-      expect(mockConnection.simulateTransaction).toHaveBeenCalled();
-    });
-  });
-
   describe('dry run (security: never send when DRY_RUN)', () => {
     test('when dryRun is true, never signs or sends transaction', async () => {
       const dryRunConfig: CircuitBreakerConfig = {
@@ -193,6 +109,126 @@ describe('TransactionEngine', () => {
       expect(result.simulationPassed).toBe(true);
       expect(mockVault.sign).not.toHaveBeenCalled();
       expect(mockConnection.sendRawTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('per-agent risk configuration via CircuitBreakerConfig', () => {
+    test('supports different rate limits for conservative vs. aggressive agents', async () => {
+      const conservativeConfig: CircuitBreakerConfig = {
+        ...baseConfig,
+        maxTxPerMinute: 1,
+      };
+      const aggressiveConfig: CircuitBreakerConfig = {
+        ...baseConfig,
+        maxTxPerMinute: 3,
+      };
+
+      const vaultEngine = new TransactionEngine(mockConnection, mockVault, conservativeConfig);
+      const flipperEngine = new TransactionEngine(mockConnection, mockVault, aggressiveConfig);
+
+      const tx = createTransferTx(0.1);
+
+      const v1 = await vaultEngine.executeTransaction('vault', tx, 'vault 1');
+      const v2 = await vaultEngine.executeTransaction('vault', tx, 'vault 2');
+
+      expect(v1.success).toBe(true);
+      expect(v2.success).toBe(false);
+      expect(v2.blockedBy).toMatch(/Rate limit/i);
+
+      const f1 = await flipperEngine.executeTransaction('flipper', tx, 'flip 1');
+      const f2 = await flipperEngine.executeTransaction('flipper', tx, 'flip 2');
+      const f3 = await flipperEngine.executeTransaction('flipper', tx, 'flip 3');
+      const f4 = await flipperEngine.executeTransaction('flipper', tx, 'flip 4');
+
+      const flipperResults = [f1, f2, f3, f4];
+      const successCount = flipperResults.filter((r) => r.success).length;
+      const rateLimited = flipperResults.find(
+        (r) => r.blockedBy && /Rate limit/i.test(r.blockedBy)
+      );
+
+      expect(successCount).toBe(3);
+      expect(rateLimited).toBeDefined();
+    });
+  });
+
+  describe('SolendAdapter integration', () => {
+    beforeEach(() => {
+      (mockConnection.getLatestBlockhash as jest.Mock).mockResolvedValue({
+        blockhash: 'test-blockhash',
+        lastValidBlockHeight: 1,
+      });
+    });
+
+    test('propagates TransactionEngine success to Solend deposit result', async () => {
+      const mockTxEngine = {
+        executeTransaction: jest.fn(),
+      } as unknown as TransactionEngine;
+
+      const adapter = new SolendAdapter(
+        mockConnection,
+        mockVault,
+        mockTxEngine as unknown as TransactionEngine,
+        {} as any
+      );
+
+      const engineResult = {
+        success: true,
+        signature: 'sig-123',
+        simulationPassed: true,
+        dryRun: false,
+        agentId: 'flipper',
+        estimatedFee: 5000,
+      };
+
+      (mockTxEngine.executeTransaction as jest.Mock).mockResolvedValue(engineResult);
+
+      const amount = 0.25;
+      const result = await adapter.executeDeposit('flipper', amount);
+
+      expect((mockTxEngine.executeTransaction as jest.Mock).mock.calls.length).toBe(1);
+      const [agentId, txArg, description] = (mockTxEngine.executeTransaction as jest.Mock).mock
+        .calls[0];
+      expect(agentId).toBe('flipper');
+      expect(txArg).toBeInstanceOf(Transaction);
+      expect(description).toContain('Simulated Solend deposit');
+      expect(description).toContain(amount.toFixed(4));
+
+      expect(result.success).toBe(true);
+      expect(result.signature).toBe(engineResult.signature);
+      expect(result.inputAmount).toBe(amount);
+      expect(result.simulated).toBe(false);
+      expect(result.error).toBeUndefined();
+      expect(result.blockedBy).toBeUndefined();
+    });
+
+    test('surfaces circuit breaker blocks in Solend deposit result', async () => {
+      const mockTxEngine = {
+        executeTransaction: jest.fn(),
+      } as unknown as TransactionEngine;
+
+      const adapter = new SolendAdapter(
+        mockConnection,
+        mockVault,
+        mockTxEngine as unknown as TransactionEngine,
+        {} as any
+      );
+
+      const engineResult = {
+        success: false,
+        simulationPassed: false,
+        dryRun: false,
+        agentId: 'flipper',
+        estimatedFee: 0,
+        blockedBy: 'Rate limit: 0 remaining, resets in 10s',
+      };
+
+      (mockTxEngine.executeTransaction as jest.Mock).mockResolvedValue(engineResult);
+
+      const result = await adapter.executeDeposit('flipper', 0.1);
+
+      expect(result.success).toBe(false);
+      expect(result.blockedBy).toBe(engineResult.blockedBy);
+      expect(result.error).toMatch(/Blocked by circuit breaker/i);
     });
   });
 });

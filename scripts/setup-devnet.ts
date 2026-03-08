@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 /**
  * Setup devnet: initialize KeyVault (if needed), create agent wallets,
- * print addresses and balances. No automatic airdrop — use https://faucet.solana.com/ if needed.
+ * print addresses and balances. No automatic airdrop - use https://faucet.solana.com/ if needed.
  *
  * Requires MASTER_PASSPHRASE in .env (32+ chars). Run once before npm run start.
  * Judges: addresses printed here match the dashboard and Solscan.
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   // ── 1. Initialize KeyVault if not already initialized ─────────────
   try {
     const mnemonic = await vault.initialize();
-    console.log('SAVE THIS RECOVERY PHRASE — shown once:\n');
+    console.log('SAVE THIS RECOVERY PHRASE - shown once:\n');
     console.log(`  ${mnemonic}\n`);
     console.log('Vault initialized.\n');
   } catch (err) {

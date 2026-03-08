@@ -14,7 +14,7 @@
  *   npm run recover-agent-sol
  *
  * Optional .env:
- *   SWEEP_FROM_AGENTS=accumulator,flipper   (default; comma-separated)
+ *   SWEEP_FROM_AGENTS=accumulator,accumulator2,accumulator3,flipper   (default; comma-separated)
  *   SWEEP_TO_ADDRESS=<pubkey>              (default: vault wallet)
  *   MIN_SOL=0.001                          (skip agent if balance below this)
  */
@@ -25,7 +25,8 @@ import { WalletManager } from '../src/wallet/WalletManager';
 
 dotenv.config();
 
-const RENT_AND_FEE_BUFFER_LAMPORTS = 15_000; // ~0.000015 SOL so we don't over-send
+// Rent-exempt minimum (~0.00089 SOL) + tx fee (~0.000005 SOL). Leave ~0.001 SOL to avoid "insufficient funds for rent".
+const RENT_AND_FEE_BUFFER_LAMPORTS = 1_000_000;
 
 async function main(): Promise<void> {
   const passphrase = (process.env.MASTER_PASSPHRASE ?? '').trim();
@@ -38,7 +39,7 @@ async function main(): Promise<void> {
   const vault = new KeyVault(passphrase);
   const walletManager = new WalletManager(connection, vault);
 
-  const fromAgentsEnv = (process.env.SWEEP_FROM_AGENTS ?? 'accumulator,flipper').trim();
+  const fromAgentsEnv = (process.env.SWEEP_FROM_AGENTS ?? 'accumulator,accumulator2,accumulator3,flipper').trim();
   const fromAgents = fromAgentsEnv.split(',').map((s) => s.trim()).filter(Boolean);
   const minSol = parseFloat(process.env.MIN_SOL ?? '0.001');
   const toAddressOverride = (process.env.SWEEP_TO_ADDRESS ?? '').trim();
@@ -60,7 +61,7 @@ async function main(): Promise<void> {
 
   for (const agentId of fromAgents) {
     // Only sweep from agents that are already registered (e.g. old 3-agent "accumulator"/"flipper").
-    // If not registered, skip — do not create a new wallet.
+    // If not registered, skip - do not create a new wallet.
     try {
       vault.getAgentPublicKey(agentId);
     } catch {
@@ -72,13 +73,13 @@ async function main(): Promise<void> {
     const balanceLamports = Math.floor(balanceSol * LAMPORTS_PER_SOL);
 
     if (balanceSol < minSol) {
-      console.log(`  ${agentId}: ${balanceSol.toFixed(4)} SOL (below MIN_SOL=${minSol}) — skip\n`);
+      console.log(`  ${agentId}: ${balanceSol.toFixed(4)} SOL (below MIN_SOL=${minSol}) - skip\n`);
       continue;
     }
 
     const sendLamports = Math.max(0, balanceLamports - RENT_AND_FEE_BUFFER_LAMPORTS);
     if (sendLamports <= 0) {
-      console.log(`  ${agentId}: balance too low to cover fee — skip\n`);
+      console.log(`  ${agentId}: balance too low to cover fee - skip\n`);
       continue;
     }
 

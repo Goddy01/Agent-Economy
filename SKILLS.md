@@ -1,4 +1,4 @@
-# SKILLS.md — Agent Colony Wallet System
+# SKILLS.md  - Agent Colony Wallet System
 
 **Per bounty requirement:** This file is for **AI agents** (e.g. Cursor, other code-assist agents) and **reviewers** to understand the agentic wallet API, safety constraints, and how to work with or extend the codebase.
 
@@ -10,31 +10,38 @@ Each agent controls an independent HD-derived wallet with enforced safety constr
 ## Agent Capabilities
 
 ### Available Agents
-| Agent ID       | Behavior              | Tick Rate | Risk Level |
-|----------------|-----------------------|-----------|------------|
-| `accumulator`  | Value buyer on dips   | 30s       | Low        |
-| `flipper`      | Spread trader         | 10s       | Medium     |
-| `vault`        | Treasury / receiving  | 60s       | Locked     |
+
+
+| Agent ID | Behavior                               | Tick Rate | Risk Level |
+| -------- | -------------------------------------- | --------- | ---------- |
+| `trader` | Spread trader (trades with pool)       | 20s       | Medium     |
+| `pool`   | Liquidity reserve (SOL and USDC)       | -         | Passive    |
+| `funder` | Holds SOL and USDC reserves; distributes to pool and traders | 45s | Low |
+| `vault`  | Treasury; receives profit in USDC from traders | 60s   | Locked     |
+
 
 ---
 
 ## API Reference (for AI agents)
 
 ### 1. Create / Register Agent Wallet
+
 ```typescript
 const address = await walletManager.createWallet(agentId: string): Promise<string>
 // Returns: Solana base58 public key
-// Safe to call multiple times — idempotent
+// Safe to call multiple times  - idempotent
 ```
 
 ### 2. Get Wallet Balance
+
 ```typescript
 const sol = await walletManager.getSolBalance(agentId: string): Promise<number>
 const info = await walletManager.getWalletInfo(agentId: string): Promise<WalletInfo>
-// WalletInfo includes SOL + all SPL token balances
+// WalletInfo includes SOL and usdcBalance when USDC_MINT is set (USDC is the platform stablecoin; required for full demo)
 ```
 
 ### 3. Sign and Send Transaction
+
 ```typescript
 const result = await txEngine.executeTransaction(
   agentId: string,
@@ -51,6 +58,7 @@ const result = await txEngine.executeTransaction(
 ```
 
 ### 4. Build a Transfer
+
 ```typescript
 const tx = await walletManager.buildTransferTransaction(
   fromAgentId: string,
@@ -60,16 +68,20 @@ const tx = await walletManager.buildTransferTransaction(
 ```
 
 ### 5. Log Decision On-Chain
+
 ```typescript
 const sig = await memoLogger.log(agentId: string, decision: AgentDecision): Promise<string | null>
-// Writes decision as Solana memo — permanent, verifiable on-chain record
+// Writes decision as Solana memo  - permanent, verifiable on-chain record
 ```
 
-### 6. Request Devnet Airdrop
+### 6. Request Devnet Airdrop (manual devnet testing only)
+
 ```typescript
 const sig = await walletManager.requestAirdrop(agentId: string, solAmount?: number)
 // Max 2 SOL per call (devnet limitation)
 ```
+
+The **funder agent** does not auto-request airdrops; it only distributes SOL that you send to its wallet. Use this API only for manual devnet top-ups (e.g. scripts or one-off tests), not from agent logic.
 
 ---
 
@@ -77,22 +89,24 @@ const sig = await walletManager.requestAirdrop(agentId: string, solAmount?: numb
 
 All transactions pass through `TransactionEngine` which enforces:
 
-| Constraint             | Default  | Env Var                      |
-|------------------------|----------|------------------------------|
-| Max SOL per tx         | 0.5 SOL  | `MAX_TX_SOL`                 |
-| Rate limit             | 10/min   | `RATE_LIMIT_TX_PER_MINUTE`   |
-| Vault floor balance    | 5.0 SOL  | `VAULT_FLOOR_SOL`            |
-| Simulation required    | Always   | Not configurable             |
-| Dry run mode           | false    | `DRY_RUN=true`               |
+
+| Constraint          | Default | Env Var                    |
+| ------------------- | ------- | -------------------------- |
+| Rate limit          | 15/min  | `RATE_LIMIT_TX_PER_MINUTE` |
+| Simulation required | Always  | Not configurable           |
+| Dry run mode        | false   | `DRY_RUN=true`             |
+
 
 ---
 
 ## Security Model
 
-- **Master seed**: Encrypted with AES-256-GCM + Argon2id at rest in `.vault.json`
-- **Agent keys**: HD-derived (BIP-44, `m/44'/501'/{index}'/0'`) — compromise of one ≠ compromise of others
+- **Master seed**: Encrypted with AES-256-GCM + Argon2id at rest in `.agent-colony-vault.json`
+- **Agent keys**: HD-derived (BIP-44, `m/44'/501'/{index}'/0'`)  - compromise of one ≠ compromise of others
 - **Key exposure**: Private keys only exist in memory during signing, zeroed immediately after
-- **Agent interface**: Agents call `sign(request)` — they never receive private key bytes
+- **Agent interface**: Agents call `sign(request)`  - they never receive private key bytes
+
+Traders are funded with 0.2 SOL and 10k USDC at startup and when added from the dashboard. The funder holds SOL and USDC reserves and tops up the pool and traders. Traders send profit to the vault in USDC.
 
 ## How to Add a New Agent
 
@@ -102,6 +116,7 @@ All transactions pass through `TransactionEngine` which enforces:
 4. Add to `Orchestrator` and wire dashboard events
 
 ## Environment Setup
+
 ```bash
 cp .env.example .env
 # Set MASTER_PASSPHRASE (32+ chars) and SOLANA_RPC_URL
@@ -109,3 +124,4 @@ npm install
 npm run setup     # Initializes vault, airdrops devnet SOL
 npm run start     # Launch colony with dashboard
 ```
+

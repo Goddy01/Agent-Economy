@@ -38,7 +38,7 @@ async function main(): Promise<void> {
   const connection = new Connection(rpcUrl, 'confirmed');
   const walletManager = new WalletManager(connection, vault);
 
-  console.log('Agent addresses (same as before — any SOL here is recoverable):\n');
+  console.log('Agent addresses (same as before - any SOL here is recoverable):\n');
   for (const agentId of AGENT_IDS) {
     const address = await walletManager.createWallet(agentId);
     const balance = await walletManager.getSolBalance(agentId);

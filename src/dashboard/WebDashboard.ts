@@ -1,5 +1,5 @@
 /**
- * WebDashboard — HTTP server and in-memory state for the colony UI.
+ * WebDashboard - HTTP server and in-memory state for the colony UI.
  *
  * Serves / with an embedded HTML page that polls /api/state for agent stats,
  * logs, block height, price, vault balance, and safety (blocked count).
@@ -26,7 +26,7 @@ const MIMES: Record<string, string> = {
 };
 
 export interface ColonyState {
-  /** Dynamic agent list (e.g. 8 agents: vault, accumulator1..3, flipper1..4). */
+  /** Dynamic agent list (e.g. vault, funder, pool, trader1..n). */
   agents: Record<string, { stats: AgentStats; wallet: WalletInfo | null }>;
   logs: Array<{
     timestamp: number;
@@ -44,9 +44,16 @@ export interface ColonyState {
   blockHeight: number;
   oraclePrice: number;
   totalVaultBalance: number;
-  vaultFloorSol: number;
   startTime: number;
   dryRun: boolean;
+  /** SOL/USDC price samples over time for chart (t: timestamp, p: price). */
+  priceHistory: Array<{ t: number; p: number }>;
+  /** Agent buy/sell events for chart markers (t: timestamp, p: price at trade, signature for Solscan link). */
+  trades: Array<{ t: number; agentId: string; side: 'buy' | 'sell'; p: number; amountSol?: number; amountToken?: number; signature?: string }>;
+  /** Total supply for market cap display (from COLONY_TOKEN_TOTAL_SUPPLY). */
+  totalSupply: number;
+  /** Vault profit history: contributions from traders (time, fromAgentId, amount SOL or USDC, optional amountUsdc, optional tx signature). */
+  vaultProfitHistory: Array<{ t: number; fromAgentId: string; amount: number; amountUsdc?: number; signature?: string }>;
 }
 
 interface AuditSignature {
@@ -54,6 +61,30 @@ interface AuditSignature {
   signature: string;
   description: string;
   timestamp: number;
+}
+
+/**
+ * POST /api/agents body. Strategy keys:
+ * - Trader: tradeAmountSol, spreadThreshold, tickMs (and optionally vaultCut).
+ */
+interface AddAgentsRequest {
+  role: 'trader';
+  count?: number;
+  strategy?: Record<string, unknown>;
+}
+
+interface AddAgentsResponse {
+  createdIds: string[];
+}
+
+interface RemoveAgentResponse {
+  claimedSol: number;
+  error?: string;
+}
+
+interface AgentManager {
+  addAgents(payload: AddAgentsRequest): Promise<AddAgentsResponse>;
+  removeAgent(agentId: string): Promise<RemoveAgentResponse>;
 }
 
 const PORT = parseInt(process.env.DASHBOARD_PORT ?? '3555', 10);
@@ -65,7 +96,7 @@ const HTML_PAGE = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agent Colony — Solana Devnet</title>
+  <title>AI Agent Colony - Solana Devnet</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -106,14 +137,14 @@ const HTML_PAGE = `<!DOCTYPE html>
       padding: 1.25rem;
       background: #1a1d24;
     }
-    .card.accumulator { border-left: 4px solid #79c0ff; }
-    .card.flipper { border-left: 4px solid #d29922; }
+    .card.pool { border-left: 4px solid #79c0ff; }
+    .card.trader { border-left: 4px solid #d29922; }
     .card.vault { border-left: 4px solid #3fb950; }
     .card.funder { border-left: 4px solid #a371f7; }
     .card.safety { border-left: 4px solid #d29922; }
     .card h2 { font-size: 0.75rem; margin: 0 0 0.75rem 0; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; font-weight: 600; }
-    .card.accumulator h2 { color: #79c0ff; }
-    .card.flipper h2 { color: #d29922; }
+    .card.pool h2 { color: #79c0ff; }
+    .card.trader h2 { color: #d29922; }
     .card.vault h2 { color: #3fb950; }
     .card.funder h2 { color: #a371f7; }
     .card .balance { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.5rem 0; color: #e6edf3; }
@@ -151,6 +182,8 @@ const HTML_PAGE = `<!DOCTYPE html>
     .log-table .msg .swap-failed .reason { color: #e6edf3; }
     .log-table .msg .swap-failed .detail { font-size: 0.75rem; color: #8b949e; }
     .log-table .msg .vault-amt { color: #3fb950; font-weight: 600; }
+    .log-table .msg .sol-amt { color: #3fb950; font-weight: 600; }
+    .log-table .msg .tok-amt { color: #d29922; font-weight: 600; }
     .log-table .log-tx { width: 4rem; }
     .log-table .log-tx-link { color: #58a6ff; text-decoration: none; }
     .log-table .log-tx-link:hover { text-decoration: underline; }
@@ -174,6 +207,15 @@ const HTML_PAGE = `<!DOCTYPE html>
       font-family: inherit;
     }
     .btn:hover { background: #30363d; }
+    .chart-box {
+      background: #1a1d24;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .chart-box h3 { margin: 0 0 0.5rem 0; font-size: 0.75rem; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+    .chart-box svg { max-width: 100%; height: auto; display: block; }
   </style>
 </head>
 <body>
@@ -192,9 +234,20 @@ const HTML_PAGE = `<!DOCTYPE html>
     </div>
   </header>
   <div class="main">
+    <div class="chart-box" id="price-chart-wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+        <div id="chart-price-display" style="display:flex;align-items:center;gap:0.5rem;">
+          <span id="chart-price" style="font-size:0.9rem;font-weight:700;color:#e6edf3;">--</span>
+          <span id="chart-change" style="font-size:0.75rem;font-weight:500;">--</span>
+        </div>
+        <span style="font-size:0.65rem;color:#6e7681;">Green = buy · Amber = sell</span>
+      </div>
+      <p class="chart-hint" style="margin:0 0 0.5rem 0;font-size:0.7rem;color:#6e7681;">Click a marker to open the tx on Solscan.</p>
+      <div id="price-chart"></div>
+    </div>
     <div class="cards" id="cards"></div>
     <div class="log-box">
-      <h3>Live decision log</h3>
+      <h3>Decision log</h3>
       <div id="logs">Waiting for agent decisions...</div>
     </div>
   </div>
@@ -218,6 +271,71 @@ const HTML_PAGE = `<!DOCTYPE html>
       document.getElementById('uptime').textContent = Math.floor(uptime/60) + 'm ' + (uptime % 60) + 's';
       document.getElementById('dryRun').style.display = state.dryRun ? 'inline' : 'none';
 
+      var ph = state.priceHistory || [];
+      var tr = state.trades || [];
+      var w = 800, h = 220, pad = { t: 12, r: 12, b: 28, l: 48 };
+      var cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+      var now = Date.now(), t0 = state.startTime, t1 = now, trange = Math.max(1, t1 - t0);
+      var allP = [state.oraclePrice].concat(ph.map(function(d){ return d.p; }), tr.map(function(d){ return d.p; })).filter(function(p){ return p > 0; });
+      var minP = allP.length ? Math.min.apply(null, allP) : state.oraclePrice * 0.98;
+      var maxP = allP.length ? Math.max.apply(null, allP) : state.oraclePrice * 1.02;
+      var pRange = Math.max(0.01, maxP - minP);
+      var pMin = minP - pRange * 0.05, pMax = maxP + pRange * 0.05, pSpan = Math.max(0.01, pMax - pMin);
+      function x(t) { return pad.l + ((t - t0) / trange) * cw; }
+      function y(p) { return pad.t + ch - ((p - pMin) / pSpan) * ch; }
+      var curX = x(now), curY = y(state.oraclePrice);
+      var yTicks = [pMin, pMin + pSpan*0.25, pMin + pSpan*0.5, pMin + pSpan*0.75, pMax];
+      var xTicks = [0, 0.25, 0.5, 0.75, 1].map(function(f){ return { x: pad.l + f * cw, t: t0 + f * trange }; });
+      var priceChange = ph.length >= 2 ? ((state.oraclePrice - ph[0].p) / ph[0].p) * 100 : 0;
+      var linePath = ph.length > 0 ? ph.map(function(d, i){ return (i === 0 ? 'M' : 'L') + ' ' + x(d.t) + ' ' + y(d.p); }).join(' ') : '';
+      var areaPath = ph.length > 0 ? linePath + ' L ' + x(ph[ph.length-1].t) + ' ' + (pad.t + ch) + ' L ' + x(ph[0].t) + ' ' + (pad.t + ch) + ' Z' : '';
+      document.getElementById('chart-price').textContent = '$' + state.oraclePrice.toFixed(2);
+      var changeEl = document.getElementById('chart-change');
+      changeEl.textContent = (priceChange >= 0 ? '+' : '') + priceChange.toFixed(2) + '%';
+      changeEl.style.color = priceChange >= 0 ? '#3fb950' : '#f85149';
+      var svg = '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" style="max-width:100%;height:auto;"><defs><linearGradient id="priceLineGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#22c55e" stop-opacity="0.3"/><stop offset="100%" stop-color="#22c55e" stop-opacity="0"/></linearGradient></defs>';
+      yTicks.forEach(function(p, i){ svg += '<line x1="' + pad.l + '" y1="' + y(p) + '" x2="' + (w-pad.r) + '" y2="' + y(p) + '" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>'; });
+      xTicks.forEach(function(tick){ svg += '<line x1="' + tick.x + '" y1="' + pad.t + '" x2="' + tick.x + '" y2="' + (pad.t + ch) + '" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>'; });
+      yTicks.forEach(function(p, i){ svg += '<text x="' + (pad.l-6) + '" y="' + (y(p)+4) + '" text-anchor="end" fill="#8b949e" font-size="10" font-family="monospace">$' + p.toFixed(2) + '</text>'; });
+      xTicks.forEach(function(tick){ var label = new Date(tick.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); svg += '<text x="' + tick.x + '" y="' + (h-6) + '" text-anchor="middle" fill="#8b949e" font-size="9" font-family="monospace">' + escapeHtml(label) + '</text>'; });
+      svg += '<line x1="' + pad.l + '" y1="' + curY + '" x2="' + (w-pad.r) + '" y2="' + curY + '" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 2"/>';
+      if (areaPath) svg += '<path d="' + areaPath + '" fill="url(#priceLineGrad)"/>';
+      if (linePath) svg += '<path d="' + linePath + '" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+      if (ph.length === 0) svg += '<circle cx="' + curX + '" cy="' + curY + '" r="4" fill="#3fb950"/>';
+      function getMarker(id) {
+        var emojis = { pool: '\u{1F4A7}', trader: '\u{1F438}', trader1: '\u{1F438}', trader2: '\u{1F436}', trader3: '\u{1F431}', trader4: '\u{1F98A}', flipper: '\u{1F438}', flipper2: '\u{1F436}', flipper3: '\u{1F431}' };
+        if (emojis[id]) return emojis[id];
+        var m = id.match(/^trader(\d+)$/);
+        if (m) { var arr = ['\u{1F438}', '\u{1F436}', '\u{1F431}', '\u{1F98A}', '\u{1F435}', '\u{1F981}']; return arr[parseInt(m[1], 10) - 1] || 'T' + m[1]; }
+        var f = id.match(/^flipper(\d+)$/);
+        if (f) { var arr = ['\u{1F438}', '\u{1F436}', '\u{1F431}']; return arr[parseInt(f[1], 10) - 1] || 'T' + f[1]; }
+        return id.slice(0, 2).toUpperCase();
+      }
+      var totalSupply = (state.totalSupply != null && state.totalSupply > 0) ? state.totalSupply : 1e6;
+      tr.forEach(function(t, i) {
+        var col = t.side === 'buy' ? '#22c55e' : '#f59e0b';
+        var solAmt = t.amountSol != null ? t.amountSol.toFixed(4) : '?';
+        var usdVal = t.amountSol != null ? t.amountSol * t.p : null;
+        var usdStr = usdVal != null ? ' ($' + usdVal.toFixed(2) + ')' : '';
+        var tooltipTitle = t.amountToken != null
+          ? (t.side === 'buy'
+            ? escapeHtml(t.agentId) + ' bought ' + solAmt + ' SOL @ $' + t.p.toFixed(2) + ' (MCap $' + (t.p * totalSupply).toFixed(0) + ')' + ' - paid $' + (t.amountToken * t.p).toFixed(2)
+            : escapeHtml(t.agentId) + ' sold ' + solAmt + ' SOL @ $' + t.p.toFixed(2) + ' (MCap $' + (t.p * totalSupply).toFixed(0) + ')' + ' - received $' + (t.amountToken * t.p).toFixed(2))
+          : (t.side === 'buy'
+            ? escapeHtml(t.agentId) + ' bought ' + solAmt + ' SOL from Pool @ $' + t.p.toFixed(2) + usdStr
+            : escapeHtml(t.agentId) + ' sold ' + solAmt + ' SOL to Pool @ $' + t.p.toFixed(2) + usdStr);
+        var title = tooltipTitle + (t.signature ? ' - Click to view tx on Solscan' : '');
+        var cx = x(t.t), cy = y(t.p);
+        var marker = '<g><circle cx="' + cx + '" cy="' + cy + '" r="12" fill="' + col + '" stroke="rgba(0,0,0,0.4)" stroke-width="1.5" style="cursor:' + (t.signature ? 'pointer' : 'default') + '" title="' + title + '"/><text x="' + cx + '" y="' + cy + '" text-anchor="middle" dominant-baseline="central" font-size="12" style="pointer-events:none">' + getMarker(t.agentId) + '</text></g>';
+        if (t.signature) {
+          svg += '<a href="https://solscan.io/tx/' + escapeHtml(t.signature) + '?cluster=devnet" target="_blank" rel="noopener">' + marker + '</a>';
+        } else {
+          svg += marker;
+        }
+      });
+      svg += '</svg>';
+      document.getElementById('price-chart').innerHTML = svg;
+
       const agentIds = Object.keys(state.agents).sort(function(a, b) {
         if (a === 'vault') return 1;
         if (b === 'vault') return -1;
@@ -226,12 +344,13 @@ const HTML_PAGE = `<!DOCTYPE html>
       function kind(id) {
         if (id === 'vault') return 'vault';
         if (id === 'funder') return 'funder';
-        if (id.indexOf('accumulator') === 0) return 'accumulator';
-        return 'flipper';
+        if (id === 'pool') return 'pool';
+        return 'trader';
       }
       function displayName(id) {
         if (id === 'vault') return 'Vault';
         if (id === 'funder') return 'Funder (send SOL here)';
+        if (id === 'pool') return 'Pool';
         return id.charAt(0).toUpperCase() + id.slice(1);
       }
       const cardsEl = document.getElementById('cards');
@@ -239,23 +358,47 @@ const HTML_PAGE = `<!DOCTYPE html>
         const a = state.agents[id];
         if (!a) return '';
         const balance = a.wallet?.solBalance != null ? a.wallet.solBalance.toFixed(3) : '...';
-        const winRate = a.stats.totalTrades > 0
-          ? ((a.stats.successfulTrades / a.stats.totalTrades) * 100).toFixed(0) + '%'
-          : '--';
-        const pnlClass = a.stats.pnlSOL >= 0 ? 'pnl-positive' : 'pnl-negative';
-        const pnlSign = a.stats.pnlSOL >= 0 ? '+' : '';
+        const agentKind = kind(id);
+        const pnlUSD = a.stats.pnlUSD;
+        const unrealizedPnlUSD = a.stats.unrealizedPnlUSD;
+        const totalPnlUSD = (pnlUSD ?? 0) + (unrealizedPnlUSD ?? 0);
+        const pnlClass = (pnlUSD ?? 0) >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const pnlSign = (pnlUSD ?? 0) >= 0 ? '+' : '';
         const addr = a.wallet?.address || '...';
         const addrLink = addr !== '...' ? ('https://solscan.io/account/' + encodeURIComponent(addr) + '?cluster=devnet') : '';
-        const volPnlRows = id === 'vault' ? '' : (
-          '<div class="row">Vol: ' + a.stats.totalVolumeSOL.toFixed(3) + ' SOL</div>' +
-          '<div class="row ' + pnlClass + '">P&L: ' + pnlSign + a.stats.pnlSOL.toFixed(4) + ' SOL</div>'
-        );
+        const usdcBalance = a.wallet?.usdcBalance ?? 0;
+        const pnlTitle = 'Realized = locked-in from sells − cost of buys (incl. gas + DEX fees). Unrealized = (current price − avg entry) × position (paper).';
+        const pnlRow = agentKind === 'trader' && (unrealizedPnlUSD != null || pnlUSD != null)
+          ? '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: Realized ' + (pnlUSD != null ? pnlSign + '$' + pnlUSD.toFixed(2) : '—') + ' · Unrealized ' + (unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + unrealizedPnlUSD.toFixed(2)) : '—') + ' · Total ' + (totalPnlUSD >= 0 ? '+' : '') + '$' + totalPnlUSD.toFixed(2) + '</div>'
+          : '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: ' + (pnlUSD != null ? pnlSign + '$' + pnlUSD.toFixed(2) : '—') + '</div>';
+        const volPnlRows = id === 'vault'
+          ? ''
+          : agentKind === 'pool'
+            ? ''
+            : (
+                '<div class="row">Vol: ' + a.stats.totalVolumeSOL.toFixed(3) + ' SOL</div>' +
+                (agentKind === 'trader' ? '<div class="row">USDC: ' + usdcBalance.toFixed(2) + '</div>' : '') +
+                (agentKind === 'funder'
+                  ? '<div class="row">Outbound: ' + (a.stats.outboundSOL ?? 0).toFixed(4) + ' SOL</div>'
+                  : pnlRow)
+              );
+        let strategyRow = '';
+        if (agentKind === 'vault') {
+          strategyRow = '<div class="row">Strategy: capital vault & safety floor.</div>';
+        } else if (agentKind === 'funder') {
+          strategyRow = '<div class="row">Strategy: fund devnet colony and vault.</div>';
+        } else if (agentKind === 'pool') {
+          strategyRow = '<div class="row">Strategy: liquidity reserve; profits come from here.</div>';
+        } else if (agentKind === 'trader') {
+          strategyRow = '<div class="row">Strategy: spread / volatility swaps; buy/sell SOL with USDC via pool.</div>';
+        }
         return '<div class="card ' + kind(id) + '">' +
           '<h2>' + displayName(id) + '</h2>' +
           '<div class="balance">' + balance + ' SOL</div>' +
           '<div class="row">' + (addrLink ? addrBlock(addr, addrLink) : escapeHtml(addr)) + '</div>' +
-          '<div class="row">Trades: ' + a.stats.totalTrades + ' (' + winRate + ' win)</div>' +
+          '<div class="row">Trades: ' + a.stats.totalTrades + '</div>' +
           volPnlRows +
+          strategyRow +
           '<div class="row">→ Vault: ' + a.stats.vaultContributions.toFixed(4) + '</div>' +
           '</div>';
       }).join('');
@@ -315,21 +458,21 @@ const HTML_PAGE = `<!DOCTYPE html>
             // Decide message color:
             // - Profit / vault contributions → green
             // - Errors → red
-            // - Flipper decisions/trades → blue
+            // - Trader decisions/trades → blue
             // - Accumulator decisions/trades → white
             let color = '#8b949e';
             const isProfit = /Sent\s+[\d.]+\s+SOL\s+to\s+vault\./i.test(rawMsg);
-            const agentKind = entry.agentId === 'vault' ? 'vault' : entry.agentId === 'funder' ? 'funder' : entry.agentId.indexOf('accumulator') === 0 ? 'accumulator' : 'flipper';
+            const agentKind = entry.agentId === 'vault' ? 'vault' : entry.agentId === 'funder' ? 'funder' : entry.agentId === 'pool' ? 'pool' : 'trader';
             if (entry.type === 'error') {
               color = '#f85149';
             } else if (isProfit) {
               color = '#3fb950';
             } else if (agentKind === 'funder') {
               color = '#a371f7';
-            } else if (agentKind === 'flipper') {
+            } else if (agentKind === 'trader') {
               color = '#58a6ff';
-            } else if (agentKind === 'accumulator') {
-              color = '#e6edf3';
+            } else if (agentKind === 'pool') {
+              color = '#79c0ff';
             }
 
             return '<tr><td>' + time + '</td><td class="agent ' + entry.type + '">' + escapeHtml(entry.agentId) + '</td><td class="msg" style="color:' + color + ';">' + msgHtml + '</td><td class="log-tx">' + txCell + '</td></tr>';
@@ -338,7 +481,14 @@ const HTML_PAGE = `<!DOCTYPE html>
       }
     }
     function formatLogMsg(message) {
-      if (typeof message !== 'string' || !message.startsWith('{')) return escapeHtml(message.length > 300 ? message.substring(0, 300) + '…' : message);
+      if (typeof message !== 'string') return '';
+      var plain = message.length > 300 ? message.substring(0, 300) + '…' : message;
+      if (!message.startsWith('{')) {
+        plain = escapeHtml(plain)
+          .replace(/(\\d+\\.?\\d{0,4})\\s*SOL/g, '<span class="sol-amt">$1 SOL</span>')
+          .replace(/(\\d+\\.?\\d{0,2})\\s*tokens/g, '<span class="tok-amt">$1 tokens</span>');
+        return plain;
+      }
       try {
         const data = JSON.parse(message);
         if (data.type === 'VAULT_CONTRIBUTION') {
@@ -413,6 +563,11 @@ export class Dashboard {
   private isRunning = false;
   private sessionId: string;
   private auditSignatures: AuditSignature[] = [];
+  private agentManager: AgentManager | null = null;
+  // Baseline SOL balance per agent at first sighting; used for trader P&L.
+  private baselineBalances: Record<string, number> = {};
+  /** Cumulative SOL deposited to each agent (funder top-ups). Cost basis for P&L = current - (deposits - withdrawals). */
+  private totalDepositedByAgent: Record<string, number> = {};
 
   constructor() {
     this.state = {
@@ -423,9 +578,12 @@ export class Dashboard {
       blockHeight: 0,
       oraclePrice: 150,
       totalVaultBalance: 0,
-      vaultFloorSol: parseFloat(process.env.VAULT_FLOOR_SOL ?? '5.0'),
       startTime: Date.now(),
       dryRun: process.env.DRY_RUN === 'true',
+      priceHistory: [],
+      trades: [],
+      totalSupply: parseFloat(process.env.COLONY_TOKEN_TOTAL_SUPPLY ?? '1000000') || 1e6,
+      vaultProfitHistory: [],
     };
     this.sessionId = Date.now().toString(36).slice(-8);
   }
@@ -443,6 +601,62 @@ export class Dashboard {
       if (pathname === '/api/state') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(this.getStateSnapshot()));
+        return;
+      }
+      // Dynamic agent management: add new trader agents at runtime.
+      if (pathname === '/api/agents' && req.method === 'POST') {
+        if (!this.agentManager) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Agent manager not available' }));
+          return;
+        }
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString('utf8');
+          // Basic guard against extremely large bodies
+          if (body.length > 10_000) {
+            req.destroy();
+          }
+        });
+        req.on('end', async () => {
+          try {
+            const payload = body ? (JSON.parse(body) as AddAgentsRequest) : ({} as AddAgentsRequest);
+            const result = await this.agentManager!.addAgents(payload);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+          }
+        });
+        return;
+      }
+      // Delete agent and claim its funds to the funder wallet.
+      if (pathname.startsWith('/api/agents/') && req.method === 'DELETE') {
+        const agentId = pathname.slice('/api/agents/'.length).replace(/\/$/, '');
+        if (!agentId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing agent id' }));
+          return;
+        }
+        if (!this.agentManager) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Agent manager not available' }));
+          return;
+        }
+        (async () => {
+          try {
+            const result = await this.agentManager!.removeAgent(agentId);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              claimedSol: 0,
+              error: err instanceof Error ? err.message : String(err),
+            }));
+          }
+        })();
         return;
       }
       // Audit export for judges (signatures, blocked reasons, recent logs)
@@ -520,7 +734,25 @@ export class Dashboard {
       ...this.state,
       agents: { ...this.state.agents },
       logs: [...this.state.logs],
+      priceHistory: [...this.state.priceHistory],
+      trades: [...this.state.trades],
+      vaultProfitHistory: [...this.state.vaultProfitHistory],
     };
+  }
+
+  /** Record a trader contribution to the vault for profit history. */
+  recordVaultContribution(fromAgentId: string, amount: number, signature?: string, amountUsdc?: number): void {
+    const entry: { t: number; fromAgentId: string; amount: number; amountUsdc?: number; signature?: string } = {
+      t: Date.now(),
+      fromAgentId,
+      amount,
+      signature,
+    };
+    if (amountUsdc != null) entry.amountUsdc = amountUsdc;
+    this.state.vaultProfitHistory.push(entry);
+    if (this.state.vaultProfitHistory.length > 200) {
+      this.state.vaultProfitHistory = this.state.vaultProfitHistory.slice(-200);
+    }
   }
 
   /** Set the list of agent ids (e.g. from agent registry). Ensures state.agents has an entry per id. */
@@ -532,8 +764,65 @@ export class Dashboard {
     }
   }
 
+  /** Remove an agent from dashboard state (after delete + claim). */
+  removeAgent(agentId: string): void {
+    delete this.state.agents[agentId];
+    delete this.baselineBalances[agentId];
+    delete this.totalDepositedByAgent[agentId];
+  }
+
+  /**
+   * Record an inflow of SOL to an agent (e.g. funder top-up). Used for cost-basis P&L:
+   * P&L = current balance - (totalDeposited - totalWithdrawn), so top-ups don't erase historical losses.
+   */
+  recordInflow(agentId: string, amount: number): void {
+    this.totalDepositedByAgent[agentId] = (this.totalDepositedByAgent[agentId] ?? 0) + amount;
+  }
+
+  /** Last-known SOL balance for an agent (from dashboard refresh). Use as fallback when RPC returns 0. */
+  getAgentBalance(agentId: string): number | undefined {
+    const w = this.state.agents[agentId]?.wallet;
+    return w && typeof w.solBalance === 'number' ? w.solBalance : undefined;
+  }
+
   updateAgent(agentId: string, stats: AgentStats, wallet: WalletInfo | null): void {
-    this.state.agents[agentId] = { stats, wallet };
+    const existing = this.state.agents[agentId];
+    const mergedStats: AgentStats = existing
+      ? { ...(existing.stats as AgentStats), ...stats }
+      : { ...stats };
+
+    // P&L: cost-basis style so top-ups don't erase history. For trader: pnlSOL = current - (deposits - withdrawals).
+    // Do not overwrite pnlUSD for traders; it is the canonical trade-based P&L (revenue from sells − cost of buys).
+    if (wallet && typeof wallet.solBalance === 'number') {
+      const current = wallet.solBalance;
+      const isTrader = agentId.startsWith('trader') || agentId.startsWith('flipper');
+      const totalWithdrawn = typeof mergedStats.vaultContributions === 'number' ? mergedStats.vaultContributions : 0;
+
+      if (isTrader) {
+        const totalDeposited = this.totalDepositedByAgent[agentId] ?? 0;
+        if (totalDeposited > 0) {
+          const netInvested = totalDeposited - totalWithdrawn;
+          mergedStats.pnlSOL = current - netInvested;
+          mergedStats.roiPercent = (mergedStats.pnlSOL / totalDeposited) * 100;
+        } else {
+          // No inflow recorded yet (restart or pre-recordInflow). Fall back to baseline so P&L isn't wrong.
+          if (this.baselineBalances[agentId] === undefined && current > 0) {
+            this.baselineBalances[agentId] = current;
+          }
+          const baseline = this.baselineBalances[agentId];
+          mergedStats.pnlSOL = baseline !== undefined ? current - baseline + totalWithdrawn : 0;
+        }
+      } else {
+        // Vault, funder, etc.: mark-to-market vs first-seen baseline
+        if (this.baselineBalances[agentId] === undefined) {
+          this.baselineBalances[agentId] = current;
+        }
+        const baseline = this.baselineBalances[agentId];
+        mergedStats.pnlSOL = current - baseline;
+      }
+    }
+
+    this.state.agents[agentId] = { stats: mergedStats, wallet };
   }
 
   addLog(agentId: string, message: string, type: ColonyState['logs'][0]['type'] = 'decision', signature?: string): void {
@@ -558,8 +847,37 @@ export class Dashboard {
   updateBlock(height: number): void {
     this.state.blockHeight = height;
   }
+  private lastPriceHistoryTime = 0;
+  private static readonly PRICE_HISTORY_INTERVAL_MS = 3000;
+  private static readonly MAX_PRICE_HISTORY = 500;
+  private static readonly MAX_TRADES = 200;
+
   updatePrice(price: number): void {
     this.state.oraclePrice = price;
+    const now = Date.now();
+    if (now - this.lastPriceHistoryTime >= Dashboard.PRICE_HISTORY_INTERVAL_MS) {
+      this.lastPriceHistoryTime = now;
+      this.state.priceHistory.push({ t: now, p: price });
+      if (this.state.priceHistory.length > Dashboard.MAX_PRICE_HISTORY) {
+        this.state.priceHistory = this.state.priceHistory.slice(-Dashboard.MAX_PRICE_HISTORY);
+      }
+    }
+  }
+
+  /** Record a buy or sell for the SOL price chart (signature optional, for Solscan link on marker). */
+  recordTrade(agentId: string, side: 'buy' | 'sell', price: number, amountSol?: number, amountToken?: number, signature?: string): void {
+    this.state.trades.push({
+      t: Date.now(),
+      agentId,
+      side,
+      p: price,
+      amountSol,
+      amountToken,
+      signature,
+    });
+    if (this.state.trades.length > Dashboard.MAX_TRADES) {
+      this.state.trades = this.state.trades.slice(-Dashboard.MAX_TRADES);
+    }
   }
   updateVaultBalance(balance: number): void {
     this.state.totalVaultBalance = balance;
@@ -605,6 +923,10 @@ export class Dashboard {
     return this.sessionId;
   }
 
+  setAgentManager(manager: AgentManager): void {
+    this.agentManager = manager;
+  }
+
   private emptyStats(agentId: string): AgentStats {
     return {
       agentId,
@@ -616,6 +938,7 @@ export class Dashboard {
       vaultContributions: 0,
       lastAction: 'Starting...',
       lastActionTime: Date.now(),
+      outboundSOL: 0,
     };
   }
 }

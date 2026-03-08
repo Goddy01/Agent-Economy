@@ -1,5 +1,5 @@
 /**
- * BaseAgent — Abstract base for all trading agents (Accumulator, Flipper, Vault).
+ * BaseAgent - Abstract base for all trading agents (Trader, Funder, Pool, Vault).
  *
  * Lifecycle: initialize() creates wallet; start() begins tick loop; each tick
  * calls decide() then execute(). Decisions are logged to dashboard and (when
@@ -103,8 +103,8 @@ export abstract class BaseAgent extends EventEmitter<BaseAgentEventMap> {
       const decision = await this.decide();
 
       // Always update lastAction so dashboard reflects the latest reasoning
-      // even when we ultimately decide to HOLD.
-      this.stats.lastAction = decision.reason;
+      // even when we ultimately decide to HOLD. Subclasses (e.g. Trader) may override formatLastAction.
+      this.stats.lastAction = this.formatLastAction(decision);
       this.stats.lastActionTime = Date.now();
 
       if (decision.type === 'HOLD') {
@@ -112,7 +112,7 @@ export abstract class BaseAgent extends EventEmitter<BaseAgentEventMap> {
         return;
       }
 
-      // Enrich with LLM rationale (non-blocking — if it fails, we proceed)
+      // Enrich with LLM rationale (non-blocking - if it fails, we proceed)
       decision.rationale = await this.rationaleEngine.explain(decision)
         .catch(() => `${decision.reason}`);
 
@@ -135,6 +135,11 @@ export abstract class BaseAgent extends EventEmitter<BaseAgentEventMap> {
   }
 
   // ─── Helpers ───────────────────────────────────────────────────
+
+  /** Format lastAction for dashboard; override in subclasses (e.g. Trader) to show friendly copy. */
+  protected formatLastAction(decision: AgentDecision): string {
+    return decision.reason;
+  }
 
   protected async getBalance(): Promise<number> {
     return this.walletManager.getSolBalance(this.id);
@@ -165,8 +170,9 @@ export abstract class BaseAgent extends EventEmitter<BaseAgentEventMap> {
       failedTrades: 0,
       totalVolumeSOL: 0,
       pnlSOL: 0,
+      pnlUSD: 0,
       vaultContributions: 0,
-      lastAction: 'Initializing',
+      lastAction: 'Waiting for first decision',
       lastActionTime: Date.now(),
     };
   }

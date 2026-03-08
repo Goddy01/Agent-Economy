@@ -1,45 +1,60 @@
 /**
  * Agent registry for scalability: defines which agents run and their types.
- * Supports 8 agents by default (judging criteria: multiple agents independently).
- * Override with env AGENT_IDS (comma-separated) to change count or names.
+ * Supports 8 agents by default (judging criteria: multiple agents independently),
+ * plus any dynamically configured agents loaded from config/agents.dynamic.json.
+ * Override with env AGENT_IDS (comma-separated) to change base ids or names.
  */
 
-export type AgentKind = 'vault' | 'funder' | 'accumulator' | 'flipper';
+import { loadDynamicAgents } from './dynamicAgentsConfig';
 
+export type AgentKind = 'vault' | 'funder' | 'pool' | 'trader';
+
+/** Default startup: vault + funder + pool + 3 traders. */
 const DEFAULT_AGENT_IDS = [
   'vault',
   'funder',
-  // Include legacy agent ids so their existing wallets are reused
-  'accumulator',
-  'accumulator2',
-  'accumulator3',
-  'flipper',
-  'flipper2',
-  'flipper3',
-  'flipper4',
+  'pool',
+  'trader',
+  'trader2',
+  'trader3',
 ] as const;
 
 /**
- * Return the list of agent ids to run (default 8 for scalability demo).
- * Set AGENT_IDS=vault,accumulator,flipper in .env for the minimal 3-agent setup.
+ * Return the list of agent ids to run (default 8 for scalability demo, plus any
+ * dynamically configured agents).
+ *
+ * Set AGENT_IDS=vault,funder,pool,trader in .env for a minimal setup;
+ * dynamic agents are always appended on top of that base list so judges can add
+ * more agents via the dashboard without editing env.
  */
 export function getAgentIds(): string[] {
   const env = process.env.AGENT_IDS;
-  if (!env || env.trim() === '') {
-    return [...DEFAULT_AGENT_IDS];
+  const baseIds =
+    !env || env.trim() === ''
+      ? [...DEFAULT_AGENT_IDS]
+      : env.split(',').map((s) => s.trim()).filter(Boolean);
+
+  const dynamic = loadDynamicAgents();
+  const seen = new Set<string>(baseIds);
+  for (const entry of dynamic) {
+    if (!seen.has(entry.id)) {
+      baseIds.push(entry.id);
+      seen.add(entry.id);
+    }
   }
-  return env.split(',').map((s) => s.trim()).filter(Boolean);
+  return baseIds;
 }
 
 /**
- * Return the kind of agent for a given id (vault / funder / accumulator / flipper).
- * One vault; one funder (distributes SOL to other agents); accumulators and flippers as before.
+ * Return the kind of agent for a given id (vault / funder / pool / trader).
+ * One vault; one funder; one pool (reserve for profits); traders trade.
+ * Supports both trader* and flipper* prefixes for backward compatibility.
  */
 export function getAgentKind(id: string): AgentKind {
   if (id === 'vault') return 'vault';
   if (id === 'funder') return 'funder';
-  if (id.startsWith('accumulator')) return 'accumulator';
-  return 'flipper';
+  if (id === 'pool') return 'pool';
+  return 'trader';
 }
 
 export const SCALABILITY_DEFAULT_AGENT_COUNT = DEFAULT_AGENT_IDS.length;

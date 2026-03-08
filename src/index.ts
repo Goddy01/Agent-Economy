@@ -1,13 +1,24 @@
 /**
- * Agent Colony — Main entry point.
+ * Agent Colony - Main entry point.
  *
  * Starts the Orchestrator, which initializes the encrypted KeyVault, creates
- * agent wallets (vault, accumulator, flipper), and runs the trading colony with
+ * agent wallets (vault, funder, pool, traders), and runs the trading colony with
  * circuit breakers, dashboard, and on-chain memo logging.
  *
- * Judges: See docs/SECURITY_SCORE.md and run `npm run test:security` for attack-simulation tests.
+ * Judges: See SETUP.md and run `npm run test:security` for attack-simulation tests.
  */
 import { Orchestrator } from './colony/Orchestrator';
+
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  if (msg.includes('Too many requests') || msg.includes('429')) {
+    console.warn(
+      'Devnet RPC rate limit hit (429). Backing off; agents and dashboard will retry automatically.'
+    );
+    return;
+  }
+  console.error('Unhandled promise rejection:', reason);
+});
 
 // Suppress @solana/web3.js 429 retry spam (devnet rate limits)
 const _stderr = console.error;

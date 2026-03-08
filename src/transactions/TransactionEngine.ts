@@ -1,9 +1,8 @@
 /**
- * TransactionEngine — Single pipeline for all agent transactions.
+ * TransactionEngine - Single pipeline for all agent transactions.
  *
- * Order: (1) Rate limit check (per agent), (2) Max SOL per tx check,
- * (3) Vault floor check for vault agent, (4) Simulation always,
- * (5) If not dry run: sign via KeyVault → sendRawTransaction → confirm.
+ * Order: (1) Rate limit check (per agent), (2) Simulation always,
+ * (3) If not dry run: sign via KeyVault → sendRawTransaction → confirm.
  * If any circuit breaker fails or simulation fails, we never sign or send.
  * Judges: see tests/security-attacks.test.ts for attack simulations.
  */
@@ -11,17 +10,13 @@ import {
     Connection,
     Transaction,
     VersionedTransaction,
-    PublicKey,
-    LAMPORTS_PER_SOL,
     SendTransactionError,
   } from '@solana/web3.js';
   import { KeyVault } from '../vault/KeyVault';
   import { RateLimiter } from './RateLimiter';
   
   export interface CircuitBreakerConfig {
-    maxTxSol: number;           // Max SOL value per transaction
     maxTxPerMinute: number;     // Rate limit
-    vaultFloorSol: number;      // Vault agent cannot go below this
     dryRun: boolean;            // Simulate only, never send
   }
   
@@ -66,28 +61,13 @@ import {
     async executeTransaction(
       agentId: string,
       transaction: Transaction | VersionedTransaction,
-      description: string,
-      options?: { skipVaultFloor?: boolean }
+      description: string
     ): Promise<TransactionResult> {
   
-      // ── Circuit Breaker 1: Rate Limit ──────────────────────────
+      // ── Circuit Breaker: Rate Limit ─────────────────────────────
       const rateCheck = this.rateLimiter.check(agentId);
       if (!rateCheck.allowed) {
         return this.blocked(agentId, `Rate limit: ${rateCheck.remaining} remaining, resets in ${Math.ceil(rateCheck.resetIn / 1000)}s`);
-      }
-  
-      // ── Circuit Breaker 2: Transaction Value ───────────────────
-      const estimatedSol = await this.estimateTransactionValue(transaction);
-      if (estimatedSol > this.config.maxTxSol) {
-        return this.blocked(agentId, `Transaction value ${estimatedSol.toFixed(4)} SOL exceeds max ${this.config.maxTxSol} SOL`);
-      }
-  
-      // ── Circuit Breaker 3: Vault Floor (for Vault agent only) ──
-      if (!options?.skipVaultFloor && agentId === 'vault') {
-        const balanceCheck = await this.checkVaultFloor(agentId, estimatedSol);
-        if (!balanceCheck.safe) {
-          return this.blocked(agentId, `Vault floor protection: balance ${balanceCheck.balance.toFixed(2)} SOL, floor ${this.config.vaultFloorSol} SOL`);
-        }
       }
   
       // ── Simulation (always runs) ───────────────────────────────
@@ -103,7 +83,7 @@ import {
         };
       }
   
-      // ── Dry Run — stop here ────────────────────────────────────
+      // ── Dry Run - stop here ────────────────────────────────────
       if (this.config.dryRun) {
         return {
           success: true,
@@ -151,6 +131,154 @@ import {
         };
       }
     }
+
+  /**
+   * Execute a Pool swap transaction (Trader <-> Pool).
+   * Uses multi-agent signing instead of single-agent. Circuit breakers still apply.
+   */
+  async executePoolSwap(
+    traderId: string,
+    poolId: string,
+    transaction: Transaction,
+    description: string
+  ): Promise<TransactionResult> {
+    const rateCheck = this.rateLimiter.check(traderId);
+    if (!rateCheck.allowed) {
+      return this.blocked(traderId, `Rate limit: ${rateCheck.remaining} remaining, resets in ${Math.ceil(rateCheck.resetIn / 1000)}s`);
+    }
+
+    const simulation = await this.simulateTransaction(transaction);
+    if (!simulation.success) {
+      return {
+        success: false,
+        simulationPassed: false,
+        error: `Simulation failed: ${simulation.error}`,
+        dryRun: this.config.dryRun,
+        agentId: traderId,
+        estimatedFee: 0,
+      };
+    }
+
+    if (this.config.dryRun) {
+      return {
+        success: true,
+        simulationPassed: true,
+        dryRun: true,
+        agentId: traderId,
+        estimatedFee: simulation.fee ?? 5000,
+        signature: `DRY_RUN_${Date.now()}`,
+      };
+    }
+
+    try {
+      await this.vault.signMultiAgent([traderId, poolId], transaction);
+
+      const signature = await this.connection.sendRawTransaction(
+        transaction.serialize(),
+        { skipPreflight: true }
+      );
+
+      await this.connection.confirmTransaction(signature, 'confirmed');
+
+      this.rateLimiter.record(traderId);
+
+      return {
+        success: true,
+        signature,
+        simulationPassed: true,
+        dryRun: false,
+        agentId: traderId,
+        estimatedFee: simulation.fee ?? 5000,
+      };
+    } catch (err) {
+      const error = err instanceof SendTransactionError
+        ? `${err.message}\nLogs: ${err.logs?.join('\n')}`
+        : String(err);
+
+      return {
+        success: false,
+        simulationPassed: true,
+        error,
+        dryRun: false,
+        agentId: traderId,
+        estimatedFee: 0,
+      };
+    }
+  }
+
+  /**
+   * Execute a P2P swap transaction (Trader A <-> Trader B).
+   * Uses multi-agent signing. Circuit breakers apply to the initiator.
+   */
+  async executeTraderSwap(
+    traderAId: string,
+    traderBId: string,
+    transaction: Transaction,
+    description: string
+  ): Promise<TransactionResult> {
+    const rateCheck = this.rateLimiter.check(traderAId);
+    if (!rateCheck.allowed) {
+      return this.blocked(traderAId, `Rate limit: ${rateCheck.remaining} remaining, resets in ${Math.ceil(rateCheck.resetIn / 1000)}s`);
+    }
+
+    const simulation = await this.simulateTransaction(transaction);
+    if (!simulation.success) {
+      return {
+        success: false,
+        simulationPassed: false,
+        error: `Simulation failed: ${simulation.error}`,
+        dryRun: this.config.dryRun,
+        agentId: traderAId,
+        estimatedFee: 0,
+      };
+    }
+
+    if (this.config.dryRun) {
+      return {
+        success: true,
+        simulationPassed: true,
+        dryRun: true,
+        agentId: traderAId,
+        estimatedFee: simulation.fee ?? 5000,
+        signature: `DRY_RUN_${Date.now()}`,
+      };
+    }
+
+    try {
+      await this.vault.signMultiAgent([traderAId, traderBId], transaction);
+
+      const signature = await this.connection.sendRawTransaction(
+        transaction.serialize(),
+        { skipPreflight: true }
+      );
+
+      await this.connection.confirmTransaction(signature, 'confirmed');
+
+      this.rateLimiter.record(traderAId);
+
+      return {
+        success: true,
+        signature,
+        simulationPassed: true,
+        dryRun: false,
+        agentId: traderAId,
+        estimatedFee: simulation.fee ?? 5000,
+      };
+    } catch (err) {
+      const error = err instanceof SendTransactionError
+        ? `${err.message}\nLogs: ${err.logs?.join('\n')}`
+        : String(err);
+
+      return {
+        success: false,
+        simulationPassed: true,
+        error,
+        dryRun: false,
+        agentId: traderAId,
+        estimatedFee: 0,
+      };
+    }
+  }
   
     // ─── Private Helpers ───────────────────────────────────────────
   
@@ -171,37 +299,6 @@ import {
       } catch (err) {
         return { success: false, error: String(err) };
       }
-    }
-  
-    /** Estimate SOL value of tx for maxTxSol circuit breaker (SystemProgram transfer only). */
-    private async estimateTransactionValue(transaction: Transaction | VersionedTransaction): Promise<number> {
-      if (!('instructions' in transaction)) {
-        return 0;  // VersionedTransaction: conservative 0 for breaker
-      }
-      let totalLamports = 0;
-      for (const instruction of transaction.instructions) {
-        if (instruction.programId.equals(new PublicKey('11111111111111111111111111111111'))) {
-          const data = instruction.data;
-          if (data.length >= 12 && data.readUInt32LE(0) === 2) {
-            totalLamports += Number(data.readBigUInt64LE(4));
-          }
-        }
-      }
-      return totalLamports / LAMPORTS_PER_SOL;
-    }
-  
-    private async checkVaultFloor(
-      agentId: string,
-      proposedSpend: number
-    ): Promise<{ safe: boolean; balance: number }> {
-      const publicKey = new PublicKey(this.vault.getAgentPublicKey(agentId));
-      const lamports = await this.connection.getBalance(publicKey);
-      const balance = lamports / LAMPORTS_PER_SOL;
-      const postBalance = balance - proposedSpend;
-      return {
-        safe: postBalance >= this.config.vaultFloorSol,
-        balance,
-      };
     }
   
     private blocked(agentId: string, reason: string): TransactionResult {

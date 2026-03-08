@@ -1,8 +1,8 @@
 /**
- * MockOracle — Simulated SOL/USDC price and spread for demo.
+ * MockOracle - Simulated SOL/USDC price and spread for demo.
  *
  * Maintains 24h of minute-level history; tick() advances price with random
- * walk. getPrice, get24hAverage, getSpread feed Accumulator and Flipper
+ * walk. getPrice, get24hAverage, getSpread feed Trader
  * decision logic. In production this would be Pyth or Switchboard.
  */
 export interface PriceData {
@@ -39,12 +39,15 @@ export interface PriceData {
     }
   
     tick(): void {
-      // Called by orchestrator to advance simulation
+      // Called by orchestrator to advance simulation. Slight mean-reversion so traders can profit.
       for (const [pair, history] of this.prices) {
         const last = history[history.length - 1];
-        // Add volatility spikes occasionally
+        const last24h = history.slice(-1440);
+        const avg = last24h.length > 0 ? last24h.reduce((a, b) => a + b, 0) / last24h.length : last;
+        const pullToMean = (avg - last) * 0.02; // gentle reversion toward 24h average
+        const noise = (Math.random() - 0.5) * 1.0;
         const spike = Math.random() < 0.05 ? (Math.random() - 0.5) * 4 : 0;
-        const newPrice = last + (Math.random() - 0.5) * 1.0 + spike;
+        const newPrice = last + pullToMean + noise + spike;
         history.push(Math.max(50, Math.min(120, newPrice)));
         if (history.length > 1440 * 2) history.shift(); // Keep 48h window
       }

@@ -1,5 +1,5 @@
 /**
- * WalletManager — Agent wallet operations (no private keys here).
+ * WalletManager - Agent wallet operations (no private keys here).
  *
  * createWallet() registers agent in KeyVault and returns address.
  * getSolBalance / getWalletInfo read from chain (with retry for devnet).
@@ -12,9 +12,8 @@ import {
     LAMPORTS_PER_SOL,
     SystemProgram,
     Transaction,
-    Keypair,
   } from '@solana/web3.js';
-  import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+  import { Token, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
   import { KeyVault } from '../vault/KeyVault';
   
   export interface WalletInfo {
@@ -23,6 +22,8 @@ import {
     solBalance: number;
     tokenBalances: TokenBalance[];
     lastUpdated: number;
+    /** USDC balance when USDC_MINT is set. */
+    usdcBalance?: number;
   }
   
   export interface TokenBalance {
@@ -45,7 +46,7 @@ import {
   
     /**
      * Register an agent in the vault and return its address.
-     * Safe to call multiple times — returns existing address if already registered.
+     * Safe to call multiple times - returns existing address if already registered.
      */
     async createWallet(agentId: string): Promise<string> {
       return await this.vault.registerAgent(agentId);
@@ -150,7 +151,87 @@ import {
       return tx;
     }
   
-    getCachedInfo(agentId: string): WalletInfo | undefined {
-      return this.walletCache.get(agentId);
-    }
+  getCachedInfo(agentId: string): WalletInfo | undefined {
+    return this.walletCache.get(agentId);
   }
+
+  /**
+   * Get the associated token account address for an agent and mint.
+   */
+  async getTokenAccountAddress(agentId: string, mint: PublicKey): Promise<PublicKey> {
+    const owner = new PublicKey(this.vault.getAgentPublicKey(agentId));
+    return await Token.getAssociatedTokenAddress(
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      TOKEN_PROGRAM_ID,
+      mint,
+      owner
+    );
+  }
+
+  /**
+   * Get token balance for an agent (uiAmount, 0 if no ATA or not found).
+   * Retries on RPC failure (devnet rate limits) to avoid falsely skipping token path.
+   */
+  async getTokenBalance(agentId: string, mint: PublicKey): Promise<number> {
+    const ata = await this.getTokenAccountAddress(agentId, mint);
+    for (let i = 0; i < 3; i++) {
+      try {
+        const info = await this.connection.getTokenAccountBalance(ata);
+        return info.value.uiAmount ?? 0;
+      } catch {
+        if (i < 2) await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Build an SPL token transfer tx (fromAgent -> toAddress). Creates recipient ATA if needed (payer = fromAgent).
+   */
+  async buildTokenTransferTransaction(
+    fromAgentId: string,
+    toAddress: string,
+    mint: PublicKey,
+    amountUi: number,
+    decimals: number
+  ): Promise<Transaction> {
+    const fromPubkey = new PublicKey(this.vault.getAgentPublicKey(fromAgentId));
+    const toPubkey = new PublicKey(toAddress);
+    const fromAta = await this.getTokenAccountAddress(fromAgentId, mint);
+    const toAta = await Token.getAssociatedTokenAddress(
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      TOKEN_PROGRAM_ID,
+      mint,
+      toPubkey
+    );
+    const amountRaw = Math.floor(amountUi * Math.pow(10, decimals));
+    const { blockhash } = await this.connection.getLatestBlockhash();
+    const tx = new Transaction();
+    const toAtaInfo = await this.connection.getAccountInfo(toAta);
+    if (!toAtaInfo) {
+      tx.add(
+        Token.createAssociatedTokenAccountInstruction(
+          ASSOCIATED_TOKEN_PROGRAM_ID,
+          TOKEN_PROGRAM_ID,
+          mint,
+          toAta,
+          toPubkey,
+          fromPubkey
+        )
+      );
+    }
+    tx.add(
+      Token.createTransferInstruction(
+        TOKEN_PROGRAM_ID,
+        fromAta,
+        toAta,
+        fromPubkey,
+        [],
+        amountRaw
+      )
+    );
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = fromPubkey;
+    return tx;
+  }
+}

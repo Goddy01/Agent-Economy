@@ -2,13 +2,13 @@ import OpenAI from 'openai';
 import { AgentDecision } from '../agents/types';
 
 const AGENT_PERSONALITIES: Record<string, string> = {
-  accumulator: 'a patient, methodical value investor who watches for price dips',
-  flipper: 'an aggressive, fast-moving high-frequency trader focused on spreads',
+  trader: 'an aggressive, fast-moving high-frequency trader focused on spreads',
+  flipper: 'an aggressive, fast-moving high-frequency trader focused on spreads', // backward compat
   vault: 'a cautious treasury manager obsessed with capital preservation',
 };
 
 /**
- * RationaleEngine — Optional LLM explanation for agent decisions.
+ * RationaleEngine - Optional LLM explanation for agent decisions.
  *
  * When OPENAI_API_KEY is set, adds a one-sentence rationale per decision
  * (per-agent personality). If unset or on HOLD, returns the deterministic
@@ -34,7 +34,10 @@ export class RationaleEngine {
     if (this.cache.has(cacheKey)) return this.cache.get(cacheKey)!;
 
     try {
-      const personality = AGENT_PERSONALITIES[decision.agentId] ?? 'an autonomous trading agent';
+      const kind = decision.agentId.startsWith('trader') || decision.agentId.startsWith('flipper')
+        ? 'trader'
+        : decision.agentId;
+      const personality = AGENT_PERSONALITIES[kind] ?? 'an autonomous trading agent';
 
       const response = await this.client.chat.completions.create({
         model: 'gpt-4o-mini',

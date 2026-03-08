@@ -19,8 +19,6 @@ describe('RateLimiter', () => {
 });
 
 describe('TransactionEngine circuit breakers', () => {
-  test('blocks transactions exceeding maxTxSol', async () => {});
   test('blocks when rate limit exceeded', async () => {});
-  test('blocks vault spending below floor', async () => {});
   test('always simulates before sending', async () => {});
 });

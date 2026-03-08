@@ -1,5 +1,5 @@
 /**
- * KeyVault — HD wallet vault for agent keypairs.
+ * KeyVault - HD wallet vault for agent keypairs.
  *
  * Master seed is encrypted at rest (crypto.ts). Agent keys are derived via
  * BIP44-style path m/44'/501'/index'/0'. Only public keys and derivation
@@ -216,6 +216,36 @@ export class KeyVault {
       agentId,
       timestamp: Date.now(),
     };
+  }
+
+  /**
+   * Partially sign a legacy Transaction with multiple agent keys.
+   * Used for Pool swaps where both Trader and Pool must sign.
+   * Only supports legacy Transaction (not VersionedTransaction).
+   */
+  async signMultiAgent(agentIds: string[], transaction: Transaction): Promise<void> {
+    const state = loadStateSync();
+    if (state.masterSeedEncrypted == null) {
+      throw new Error('Vault not initialized');
+    }
+
+    const seedPlain = await decrypt(state.masterSeedEncrypted, this.passphrase);
+    const hexSeed = seedPlain.toString('hex');
+
+    for (const agentId of agentIds) {
+      const record = state.agents.find((a) => a.agentId === agentId);
+      if (!record) {
+        seedPlain.fill(0);
+        throw new Error(`Agent not registered: ${agentId}`);
+      }
+      const derivationPath = `${SOLANA_DERIVATION_PREFIX}/${record.derivationIndex}'/0'`;
+      const { key } = derivePath(derivationPath, hexSeed);
+      const keypair = Keypair.fromSeed(key);
+      key.fill(0);
+      transaction.partialSign(keypair);
+    }
+
+    seedPlain.fill(0);
   }
 
   private getSignatureFromTransaction(
