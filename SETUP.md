@@ -22,7 +22,7 @@ MASTER_PASSPHRASE="your-secret-at-least-32-characters"
 
 Use at least 32 characters. To generate one: run `npm run generate-passphrase` and paste the printed line into `.env`. Never commit `.env` or `.agent-colony-vault.json` to git.
 
-**Optional:** Recovery phrase - only needed if you lose the vault file. Set `RECOVERY_PHRASE="word1 word2 ... word24"` in `.env` when running restore (see Commands). Don’t commit it.
+**Optional:** 24-word recovery phrase shown once during `npm run setup`. Use this to restore your vault if `.agent-colony-vault.json` is lost. Only set `RECOVERY_PHRASE="word1 word2 ... word24"` in `.env` when restoring.
 
 After first run or `npm run setup`, the file `.agent-colony-vault.json` is created (encrypted key material). Keep it and `.env` only on machines you trust.
 
