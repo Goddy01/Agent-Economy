@@ -1,4 +1,4 @@
-# Agent Colony — Setup & Demo Guide
+# Agent Colony - Setup & Demo Guide
 
 > **For bounty judges:** Jump straight to [Judge Quickstart](#judge-quickstart). Total time to a running demo: **~5–8 minutes**.
 > For a deep dive into the wallet design, security model, and AI agent architecture, see [DEEP_DIVE.md](./DEEP_DIVE.md).
@@ -7,7 +7,7 @@
 
 ## What is Agent Colony?
 
-Agent Colony is an autonomous multi-agent economy running on **Solana devnet**. A set of AI-driven agents — vault, funder, liquidity pool, and traders — each hold their own on-chain wallets, make independent financial decisions, and execute real transactions. Traders swap SOL ↔ USDC via **Orca Whirlpools**, the pool manages liquidity, and the funder tops up agent balances automatically. Every decision is logged on-chain via Solana's Memo program, creating a fully verifiable audit trail. A live React dashboard shows balances, P&L, trading history, and on-chain addresses in real time.
+Agent Colony is an autonomous multi-agent economy running on **Solana devnet**. A set of AI-driven agents - vault, funder, liquidity pool, and traders - each hold their own on-chain wallets, make independent financial decisions, and execute real transactions. Traders swap SOL ↔ USDC via **Orca Whirlpools**, the pool manages liquidity, and the funder tops up agent balances automatically. Every decision is logged on-chain via Solana's Memo program, creating a fully verifiable audit trail. A live React dashboard shows balances, P&L, trading history, and on-chain addresses in real time.
 
 **Default colony:** 6 agents (vault + funder + pool + 3 traders). Fully scalable at runtime.
 
@@ -21,7 +21,7 @@ Before starting, make sure you have:
 - **npm** v9 or higher (`npm --version`)
 - **Git**
 - A stable internet connection (devnet RPC calls required)
-- No need for a Solana wallet or CLI — the colony manages its own keys
+- No need for a Solana wallet or CLI - the colony manages its own keys
 
 > Tested on macOS and Linux. Windows users should use WSL2.
 
@@ -31,7 +31,7 @@ Before starting, make sure you have:
 
 The fastest path to a fully running demo with on-chain USDC trading.
 
-### Step 1 — Clone and install
+### Step 1 - Clone and install
 
 ```bash
 git clone https://github.com/Goddy01/Agent-Economy.git
@@ -40,7 +40,7 @@ npm install
 cp .env.example .env
 ```
 
-### Step 2 — Set your passphrase
+### Step 2 - Set your passphrase
 
 Open `.env` and set one required variable. Run this to generate a secure value:
 
@@ -54,21 +54,21 @@ Paste the printed line into `.env`:
 MASTER_PASSPHRASE="your-generated-passphrase-here"
 ```
 
-### Step 3 — Initialize the colony
+### Step 3 - Initialize the colony
 
 ```bash
 npm run setup
 ```
 
-This creates an encrypted vault, generates agent wallets, and airdrops devnet SOL. You'll see each agent's wallet address printed — **save these** for on-chain verification. A 24-word recovery phrase is also shown once here; store it somewhere safe.
+This creates an encrypted vault, generates agent wallets, and airdrops devnet SOL. You'll see each agent's wallet address printed - **save these** for on-chain verification. A 24-word recovery phrase is also shown once here; store it somewhere safe.
 
-### Step 4 — Fund the funder wallet
+### Step 4 - Fund the funder wallet
 
-The funder wallet address is printed by `npm run setup` and labeled **"Funder (send SOL here)"** on the dashboard. Top it up with devnet SOL before the next step — the funder pays for USDC mint creation and token accounts.
+The funder wallet address is printed by `npm run setup` and labeled **"Funder (send SOL here)"** on the dashboard. Top it up with devnet SOL before the next step - the funder pays for USDC mint creation and token accounts.
 
 Get devnet SOL from: [faucet.solana.com](https://faucet.solana.com) or [solfaucet.com](https://solfaucet.com)
 
-### Step 5 — Create the USDC token
+### Step 5 - Create the USDC token
 
 ```bash
 npm run create-usdc-token
@@ -76,7 +76,7 @@ npm run create-usdc-token
 
 This mints a new USDC SPL token on devnet, updates `USDC_MINT` in `.env`, and funds the pool and traders. Each trader starts with **0.2 SOL + 10,000 USDC**.
 
-### Step 6 — Build and launch
+### Step 6 - Build and launch
 
 ```bash
 npm run build:dashboard && npm run start
@@ -117,7 +117,7 @@ Once the colony is running, here's what confirms it's functioning correctly:
 | **4-agent** | Set `AGENT_IDS=vault,funder,pool,trader` in `.env`, then `npm run setup` |
 | **6-agent (default)** | Leave `AGENT_IDS` unset |
 | **Add traders live** | Dashboard → **Scale the colony** panel → choose a preset → **Add agents to colony** |
-| **Stress test (no tx)** | `npm run colony:stress` — many agents, dry run only |
+| **Stress test (no tx)** | `npm run colony:stress` - many agents, dry run only |
 
 Each trader added from the dashboard is funded automatically by the funder (0.2 SOL + 10k USDC).
 
@@ -133,7 +133,7 @@ Each trader added from the dashboard is funded automatically by the funder (0.2 
 | `npm run start` | Start colony and dashboard at [http://localhost:3555](http://localhost:3555) |
 | `npm run build:dashboard` | Build the React dashboard. Run if dashboard doesn't load. |
 | `npm run build` | Compile TypeScript backend. |
-| `npm run colony:dry` | Start with `DRY_RUN=true` — logs decisions but sends no transactions. |
+| `npm run colony:dry` | Start with `DRY_RUN=true` - logs decisions but sends no transactions. |
 | `npm run demo` | One-shot: setup → build → start (create USDC separately). |
 | `npm run generate-passphrase` | Print a secure passphrase to paste into `.env`. |
 | `npm run restore-vault` | Restore vault from 24-word recovery phrase (`RECOVERY_PHRASE` in `.env`). |
