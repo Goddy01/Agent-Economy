@@ -95,7 +95,7 @@ The fastest path to a fully running demo with on-chain USDC trading. Total time:
 
 ```bash
 git clone https://github.com/Goddy01/Agent-Economy.git
-cd agent-colony
+cd Agent-Economy
 npm install
 cp .env.example .env
 ```
