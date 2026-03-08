@@ -182,4 +182,4 @@ Agent wallet addresses are printed by `npm run setup`, shown on each dashboard c
 
 ## License
 
-ISC
+MIT
