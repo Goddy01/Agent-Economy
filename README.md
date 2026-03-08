@@ -85,6 +85,18 @@ Before starting, make sure you have:
 
 > Tested on macOS and Linux. Windows users should use WSL2.
 
+### Dependencies and npm warnings (for reviewers)
+
+`npm install` may show deprecation warnings for **transitive** dependencies (packages we do not depend on directly):
+
+| Warning | Source | What we do |
+|--------|--------|------------|
+| `glob`, `rimraf`, `inflight` | Jest, @solana/web3.js (via Orca Whirlpools SDK) | **Overridden** in `package.json` to supported versions (glob ^10, rimraf ^5) where possible. |
+| `npmlog`, `gauge`, `are-we-there-yet`, `@npmcli/move-file` | node-gyp (pulled in by Solana dependencies) | Deep in the toolchain; no safe override without changing SDKs. |
+| `@metaplex-foundation/mpl-core` | @orca-so/whirlpools-sdk → mpl-token-metadata | Required by the Orca SDK; no maintained replacement. We do not use it directly. |
+
+The project uses npm **overrides** for `tar`, `bigint-buffer`, `glob`, and `rimraf` to reduce exposure. Remaining warnings come from the Solana/Orca and Jest dependency trees and cannot be removed without swapping those dependencies.
+
 ---
 
 ## Judge Quickstart

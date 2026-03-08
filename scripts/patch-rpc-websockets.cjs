@@ -13,7 +13,7 @@ if (!fs.existsSync(pkgPath)) {
 }
 
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-if (!pkg.exports || !pkg.exports.node) return;
+if (!pkg.exports || !pkg.exports.node) process.exit(0);
 
 const node = pkg.exports.node;
 const browser = pkg.exports.browser || node;
