@@ -814,7 +814,7 @@ function TraderHistoryView({
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-xl font-bold text-white uppercase tracking-tight">{displayName} - Trading history</h1>
-            <p className="text-[10px] text-white/40 mt-1 font-mono truncate max-w-md">{addr || '—'}</p>
+            <p className="text-[10px] text-white/40 mt-1 font-mono truncate max-w-md">{addr || '-'}</p>
           </div>
           {addr && (
             <a
@@ -841,7 +841,7 @@ function TraderHistoryView({
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Realized P&L</p>
             <p className={`text-lg font-mono ${(pnlUSD ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {pnlUSD != null ? ((pnlUSD >= 0 ? '+' : '') + '$' + pnlUSD.toFixed(2)) : '—'}
+              {pnlUSD != null ? ((pnlUSD >= 0 ? '+' : '') + '$' + pnlUSD.toFixed(2)) : '-'}
             </p>
           </div>
           <div>
@@ -889,7 +889,7 @@ function TraderHistoryView({
                         <td className="px-4 py-3 font-mono text-white">{(tr.amountSol ?? 0).toFixed(4)}</td>
                         <td className="px-4 py-3 font-mono text-white/80">${tr.p.toFixed(2)}</td>
                         <td className="px-4 py-3 font-mono text-white/80">
-                          {usdVal != null ? '$' + usdVal.toFixed(2) : '—'}
+                          {usdVal != null ? '$' + usdVal.toFixed(2) : '-'}
                         </td>
                         <td className="px-4 py-3 font-mono text-white/70">{tr.preSol.toFixed(4)}</td>
                         <td className="px-4 py-3 font-mono text-white/70">{tr.postSol.toFixed(4)}</td>
@@ -907,7 +907,7 @@ function TraderHistoryView({
                               View
                             </a>
                           ) : (
-                            <span className="text-white/30 text-xs">—</span>
+                            <span className="text-white/30 text-xs">-</span>
                           )}
                         </td>
                       </tr>
@@ -1042,7 +1042,7 @@ function VaultProfitHistoryView({
                             View
                           </a>
                         ) : (
-                          <span className="text-white/30 text-xs">—</span>
+                          <span className="text-white/30 text-xs">-</span>
                         )}
                       </td>
                     </tr>
@@ -1844,13 +1844,13 @@ function AgentCard({
                     <div>
                       <p className="text-white/50 uppercase">Realized</p>
                       <p className={`font-mono ${(pnlUSD ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {pnlUSD != null ? ((pnlUSD >= 0 ? '+' : '') + '$' + pnlUSD.toFixed(2)) : '—'}
+                        {pnlUSD != null ? ((pnlUSD >= 0 ? '+' : '') + '$' + pnlUSD.toFixed(2)) : '-'}
                       </p>
                     </div>
                     <div>
                       <p className="text-white/50 uppercase">Unrealized</p>
                       <p className={`font-mono ${(unrealizedPnlUSD ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + unrealizedPnlUSD.toFixed(2)) : '—'}
+                        {unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + unrealizedPnlUSD.toFixed(2)) : '-'}
                       </p>
                     </div>
                     <div>
@@ -1862,7 +1862,7 @@ function AgentCard({
                   </div>
                 ) : (
                   <p className={`text-sm font-mono ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {pnlUSD != null ? (isPositive ? '+' : '') + '$' + pnlUSD.toFixed(2) : '—'}
+                    {pnlUSD != null ? (isPositive ? '+' : '') + '$' + pnlUSD.toFixed(2) : '-'}
                   </p>
                 )}
               </div>
@@ -1951,7 +1951,7 @@ function AgentCard({
                                     <ExternalLink className="w-3 h-3" />
                                   </a>
                                 ) : (
-                                  <span className="text-white/30">—</span>
+                                  <span className="text-white/30">-</span>
                                 )}
                               </td>
                             </tr>

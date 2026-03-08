@@ -369,8 +369,8 @@ const HTML_PAGE = `<!DOCTYPE html>
         const usdcBalance = a.wallet?.usdcBalance ?? 0;
         const pnlTitle = 'Realized = locked-in from sells − cost of buys (incl. gas + DEX fees). Unrealized = (current price − avg entry) × position (paper).';
         const pnlRow = agentKind === 'trader' && (unrealizedPnlUSD != null || pnlUSD != null)
-          ? '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: Realized ' + (pnlUSD != null ? pnlSign + '$' + pnlUSD.toFixed(2) : '—') + ' · Unrealized ' + (unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + unrealizedPnlUSD.toFixed(2)) : '—') + ' · Total ' + (totalPnlUSD >= 0 ? '+' : '') + '$' + totalPnlUSD.toFixed(2) + '</div>'
-          : '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: ' + (pnlUSD != null ? pnlSign + '$' + pnlUSD.toFixed(2) : '—') + '</div>';
+          ? '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: Realized ' + (pnlUSD != null ? pnlSign + '$' + pnlUSD.toFixed(2) : '-') + ' · Unrealized ' + (unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + unrealizedPnlUSD.toFixed(2)) : '-') + ' · Total ' + (totalPnlUSD >= 0 ? '+' : '') + '$' + totalPnlUSD.toFixed(2) + '</div>'
+          : '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: ' + (pnlUSD != null ? pnlSign + '$' + pnlUSD.toFixed(2) : '-') + '</div>';
         const volPnlRows = id === 'vault'
           ? ''
           : agentKind === 'pool'
@@ -454,7 +454,7 @@ const HTML_PAGE = `<!DOCTYPE html>
             const rawMsg = typeof entry.message === 'string' ? entry.message : '';
             const txCell = entry.signature
               ? '<a href="https://solscan.io/tx/' + escapeHtml(entry.signature) + '?cluster=devnet" target="_blank" rel="noopener" class="log-tx-link" title="View on Solscan">View</a>'
-              : '—';
+              : '-';
             // Decide message color:
             // - Profit / vault contributions → green
             // - Errors → red

@@ -52,13 +52,13 @@
 
 The Colony Control dashboard runs at `http://localhost:3555` and shows live balances, P&L, and on-chain activity. Below are screenshots judges can expect when running the demo.
 
-**Main dashboard — Treasury, Funding & Pool**
+**Main dashboard - Treasury, Funding & Pool**
 
 Vault (profit sink), Funder (SOL top-up for agents), and Pool (liquidity counterparty for SOL/USDC swaps).
 
 ![Treasury, Funding & Pool](docs/screenshots/treasury-funding-pool.png)
 
-**Traders — autonomous agent cards**
+**Traders - autonomous agent cards**
 
 Each trader has its own wallet, volume, USDC balance, and realized/unrealized P&L. Info icons explain each entity.
 
