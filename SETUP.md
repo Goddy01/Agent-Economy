@@ -91,7 +91,7 @@ Agents tick on the interval set by **COLONY_TICK_MS** (default 10–60s per agen
 | **npm run demo**                         | One-shot: setup → build dashboard → start (create USDC separately if needed).                              |
 | **npm run build**                        | Compile TypeScript (backend).                                                                              |
 | **npm run build:dashboard**              | Build React dashboard. Run if dashboard doesn’t load.                                                      |
-| **npm run generate-passphrase**          | Print a secure passphrase line to add to `.env`.                                                           |
+| **npm run generate-passphrase**          | Print a secure MASTER passphrase line to add to `.env`.                                                           |
 | **npm run restore-vault**                | Restore vault from 24-word recovery phrase (`RECOVERY_PHRASE` in `.env`).                                  |
 | **npm run recover-agent-sol**            | Sweep SOL from legacy agent wallets into vault or `SWEEP_TO_ADDRESS`.                                      |
 | **npm run sweep-to-funder**              | Move SOL to the funder wallet.                                                                             |
