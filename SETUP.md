@@ -7,7 +7,7 @@ This is the single guide for **setting up**, **running**, and **verifying** the 
 ## 1. One-time setup
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Goddy01/Agent-Economy.git
 cd agent-colony
 npm install
 
