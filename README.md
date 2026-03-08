@@ -224,9 +224,7 @@ SOL contributions from traders with timestamps and Solscan transaction links - o
 
 ---
 
-<details>
-<summary><strong>All Commands</strong></summary>
-<br>
+### All Commands
 
 | Command | What it does |
 |---|---|
@@ -250,13 +248,9 @@ SOL contributions from traders with timestamps and Solscan transaction links - o
 | `npm run test:security` | Run security and transaction tests. |
 | `npm run security:check` | Scan for secrets in code and run dependency audit. |
 
-</details>
-
 ---
 
-<details>
-<summary><strong>Environment Variables</strong></summary>
-<br>
+### Environment Variables
 
 | Variable | What it does | Default / Example |
 |---|---|---|
@@ -273,13 +267,9 @@ SOL contributions from traders with timestamps and Solscan transaction links - o
 | `DASHBOARD_REFRESH_MS` | How often the dashboard polls for updates (ms). | `3000` |
 | `OPENAI_API_KEY` | Optional. Enables LLM-generated rationale text in agent decisions. | (optional) |
 
-</details>
-
 ---
 
-<details>
-<summary><strong>Security</strong></summary>
-<br>
+### Security
 
 **Safe practices:**
 - Run on devnet only with your own `.env` and vault file
@@ -292,13 +282,9 @@ SOL contributions from traders with timestamps and Solscan transaction links - o
 - Share or commit your vault file
 - Use mainnet or real funds without a thorough security review
 
-</details>
-
 ---
 
-<details>
-<summary><strong>Troubleshooting</strong></summary>
-<br>
+### Troubleshooting
 
 | Error | Fix |
 |---|---|
@@ -308,8 +294,6 @@ SOL contributions from traders with timestamps and Solscan transaction links - o
 | Dashboard not loading | Run `npm run build:dashboard`, then `npm run start`. |
 | SOL stuck in old agent wallets | Run `npm run recover-agent-sol`. Optionally set `SWEEP_FROM_AGENTS`, `SWEEP_TO_ADDRESS`, `MIN_SOL` in `.env`. |
 | Devnet airdrop fails | Devnet faucets are rate-limited. Try [faucet.solana.com](https://faucet.solana.com) or wait a few minutes and retry `npm run setup`. |
-
-</details>
 
 ---
 
