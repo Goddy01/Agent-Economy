@@ -45,8 +45,6 @@ export interface AgentStats {
   vaultContributions: number;
   lastAction: string;
   lastActionTime: number;
-  /** Total SOL this agent has sent out (e.g. funder distributions). */
-  outboundSOL?: number;
   /** ROI percentage (PnL / total deposited), when applicable. */
   roiPercent?: number;
 }

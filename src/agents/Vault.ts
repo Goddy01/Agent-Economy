@@ -58,7 +58,6 @@ export class VaultAgent extends BaseAgent {
   }
 
   protected async execute(_decision: AgentDecision): Promise<void> {
-    // Vault never initiates outbound spends.
   }
 
   getVaultStatus(): {

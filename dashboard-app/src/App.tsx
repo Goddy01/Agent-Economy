@@ -41,7 +41,6 @@ interface AgentStats {
   vaultContributions: number;
   lastAction: string;
   lastActionTime: number;
-  outboundSOL?: number;
 }
 
 interface WalletInfo {
@@ -87,6 +86,13 @@ const TRADER_PRESETS: Record<string, { tradeAmountSol: number; spreadThreshold: 
 };
 
 const SOLSCAN_TX = (sig: string) => `https://solscan.io/tx/${sig}?cluster=devnet`;
+
+/** Format number with comma-separated thousands (e.g. 10000 → "10,000"). */
+function formatNum(n: number, decimals?: number): string {
+  if (decimals != null)
+    return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return n.toLocaleString();
+}
 
 // Responsive grid layout helper for agent sections so 1–4 cards per section
 // look balanced without awkward empty columns.
@@ -136,9 +142,9 @@ function formatLogMessage(message: string): React.ReactNode {
     return (
       <span className="block">
         {success ? (
-          <>Sent <span className="text-emerald-400 font-medium">{amount.toFixed(4)} SOL</span> to vault.</>
+          <>Sent <span className="text-emerald-400 font-medium">{formatNum(amount, 4)} SOL</span> to vault.</>
         ) : (
-          <>Failed to send {amount.toFixed(4)} SOL to vault. {parsed.result?.error ?? ''}</>
+          <>Failed to send {formatNum(amount, 4)} SOL to vault. {parsed.result?.error ?? ''}</>
         )}
       </span>
     );
@@ -278,10 +284,10 @@ function LightweightSolChart({
       if (best) {
         const tr = best.trade;
         const markerContent = getAgentMarker(tr.agentId);
-        const solAmt = tr.amountSol != null ? tr.amountSol.toFixed(4) : '?';
+        const solAmt = tr.amountSol != null ? formatNum(tr.amountSol, 4) : '?';
         const usdVal = tr.amountSol != null ? tr.amountSol * tr.p : null;
         const action = tr.side === 'buy' ? 'bought' : 'sold';
-        const line1 = `${markerContent} ${action} ${usdVal != null ? '$' + usdVal.toFixed(2) : solAmt + ' SOL'} at $${tr.p.toFixed(2)}`;
+        const line1 = `${markerContent} ${action} ${usdVal != null ? '$' + formatNum(usdVal, 2) : solAmt + ' SOL'} at $${formatNum(tr.p, 2)}`;
         const line2 = 'Market Cap';
         setTooltip({ trade: tr, x: e.clientX, y: e.clientY, line1, line2 });
       } else {
@@ -308,9 +314,9 @@ function LightweightSolChart({
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div>
           <p className="text-lg font-bold text-white">
-            ${currentPrice.toFixed(2)}
+            ${formatNum(currentPrice, 2)}
             <span className={priceChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-              {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+              {priceChange >= 0 ? '+' : ''}{formatNum(priceChange, 2)}%
             </span>
           </p>
           <p className="text-[10px] text-white/40">Scroll to zoom · Drag to pan · Green = buy · Red = sell</p>
@@ -540,10 +546,10 @@ function SolPriceChart({
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-3">
           <span className="text-sm font-bold text-white">
-            ${currentPrice.toFixed(2)}
+            ${formatNum(currentPrice, 2)}
           </span>
           <span className={`text-xs font-medium ${priceChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+            {priceChange >= 0 ? '+' : ''}{formatNum(priceChange, 2)}%
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -608,7 +614,7 @@ function SolPriceChart({
             textAnchor="end"
             className="fill-white/50 font-mono text-[10px]"
           >
-            ${p.toFixed(2)}
+            ${formatNum(p, 2)}
           </text>
         ))}
         {/* X-axis time labels - rightmost one right-aligned so it doesn't clip with minimal right padding */}
@@ -639,12 +645,12 @@ function SolPriceChart({
             ? `https://solscan.io/tx/${tr.signature}?cluster=devnet`
             : null;
           const markerContent = getAgentMarker(tr.agentId);
-          const solAmt = tr.amountSol != null ? tr.amountSol.toFixed(4) : '?';
+          const solAmt = tr.amountSol != null ? formatNum(tr.amountSol, 4) : '?';
           const usdVal = tr.amountSol != null ? tr.amountSol * tr.p : null;
           const action = tr.side === 'buy' ? 'bought' : 'sold';
-          const priceStr = `at $${tr.p.toFixed(2)}`;
+          const priceStr = `at $${formatNum(tr.p, 2)}`;
           const line1 = `${markerContent} ${action} ${solAmt} SOL ${priceStr}`;
-          const line2 = usdVal != null ? `$${usdVal.toFixed(2)}` : '';
+          const line2 = usdVal != null ? `$${formatNum(usdVal, 2)}` : '';
           const line3 = solscanUrl ? 'Click to view tx on Solscan' : '';
           const tooltipTitle = [line1, line2, line3].filter(Boolean).join('\n');
           const cx = x(tr.t);
@@ -832,22 +838,22 @@ function TraderHistoryView({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-xl bg-white/5 border border-white/5">
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Total SOL bought</p>
-            <p className="text-lg font-mono text-white">{totalSolBought.toFixed(4)}</p>
+            <p className="text-lg font-mono text-white">{formatNum(totalSolBought, 4)}</p>
           </div>
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Total SOL sold</p>
-            <p className="text-lg font-mono text-white">{totalSolSold.toFixed(4)}</p>
+            <p className="text-lg font-mono text-white">{formatNum(totalSolSold, 4)}</p>
           </div>
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Realized P&L</p>
             <p className={`text-lg font-mono ${(pnlUSD ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {pnlUSD != null ? ((pnlUSD >= 0 ? '+' : '') + '$' + pnlUSD.toFixed(2)) : '-'}
+              {pnlUSD != null ? ((pnlUSD >= 0 ? '+' : '') + '$' + formatNum(pnlUSD, 2)) : '-'}
             </p>
           </div>
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Total P&L</p>
             <p className={`text-lg font-mono ${totalPnlUSD >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {(totalPnlUSD >= 0 ? '+' : '') + '$' + totalPnlUSD.toFixed(2)}
+              {(totalPnlUSD >= 0 ? '+' : '') + '$' + formatNum(totalPnlUSD, 2)}
             </p>
           </div>
         </div>
@@ -886,15 +892,15 @@ function TraderHistoryView({
                             {tr.side === 'buy' ? 'Buy' : 'Sell'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 font-mono text-white">{(tr.amountSol ?? 0).toFixed(4)}</td>
-                        <td className="px-4 py-3 font-mono text-white/80">${tr.p.toFixed(2)}</td>
+                        <td className="px-4 py-3 font-mono text-white">{formatNum(tr.amountSol ?? 0, 4)}</td>
+                        <td className="px-4 py-3 font-mono text-white/80">${formatNum(tr.p, 2)}</td>
                         <td className="px-4 py-3 font-mono text-white/80">
-                          {usdVal != null ? '$' + usdVal.toFixed(2) : '-'}
+                          {usdVal != null ? '$' + formatNum(usdVal, 2) : '-'}
                         </td>
-                        <td className="px-4 py-3 font-mono text-white/70">{tr.preSol.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-mono text-white/70">{tr.postSol.toFixed(4)}</td>
-                        <td className="px-4 py-3 font-mono text-white/70">{tr.preUsdc.toFixed(2)}</td>
-                        <td className="px-4 py-3 font-mono text-white/70">{tr.postUsdc.toFixed(2)}</td>
+                        <td className="px-4 py-3 font-mono text-white/70">{formatNum(tr.preSol, 4)}</td>
+                        <td className="px-4 py-3 font-mono text-white/70">{formatNum(tr.postSol, 4)}</td>
+                        <td className="px-4 py-3 font-mono text-white/70">{formatNum(tr.preUsdc, 2)}</td>
+                        <td className="px-4 py-3 font-mono text-white/70">{formatNum(tr.postUsdc, 2)}</td>
                         <td className="px-4 py-3">
                           {tr.signature ? (
                             <a
@@ -996,7 +1002,7 @@ function VaultProfitHistoryView({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-xl bg-white/5 border border-white/5">
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Total contributions</p>
-            <p className="text-lg font-mono text-emerald-400">{totalSol.toFixed(4)} SOL</p>
+            <p className="text-lg font-mono text-emerald-400">{formatNum(totalSol, 4)} SOL</p>
           </div>
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Contributions</p>
@@ -1029,7 +1035,7 @@ function VaultProfitHistoryView({
                         {new Date(entry.t).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium', hour12: false })}
                       </td>
                       <td className="px-4 py-3 text-white/80">{fromName}</td>
-                      <td className="px-4 py-3 font-mono text-emerald-400">+{entry.amount.toFixed(4)} SOL</td>
+                      <td className="px-4 py-3 font-mono text-emerald-400">+{formatNum(entry.amount, 4)} SOL</td>
                       <td className="px-4 py-3">
                         {entry.signature ? (
                           <a
@@ -1243,7 +1249,7 @@ export default function App() {
               </div>
               <div className="flex flex-col">
                 <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">SOL/USDC</span>
-                <span className="font-mono text-sm text-white">${state.oraclePrice.toFixed(2)}</span>
+                <span className="font-mono text-sm text-white">${formatNum(state.oraclePrice, 2)}</span>
                 <span className="text-[10px] text-white/40">USDC is the platform stablecoin</span>
               </div>
             </div>
@@ -1529,7 +1535,7 @@ export default function App() {
               <div className={`rounded-lg border px-4 py-2 text-sm font-mono ${deleteResult.error ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'}`}>
                 {deleteResult.error
                   ? `Delete ${deleteResult.agentId}: ${deleteResult.error}`
-                  : `Removed ${deleteResult.agentId}; claimed ${deleteResult.claimedSol.toFixed(4)} SOL to funder.`}
+                  : `Removed ${deleteResult.agentId}; claimed ${formatNum(deleteResult.claimedSol, 4)} SOL to funder.`}
               </div>
             )}
             <div className="flex items-center justify-between">
@@ -1633,7 +1639,7 @@ export default function App() {
                 <span className="font-semibold text-white">Layout</span> - <strong>Treasury, Funding &amp; Pool</strong>: vault (receives trader profits), funder (you send SOL here; it distributes to agents), and pool (liquidity reserve). <strong>Traders</strong>: spread-based swap agents that trade SOL vs USDC (when configured) and can send realized profit to the vault. USDC is the platform&apos;s stablecoin.
               </p>
               <p>
-                <span className="font-semibold text-white">Cards</span> - Each card shows that agent&apos;s SOL balance and, where applicable, USDC balance (pool, funder, traders). Traders also show volume, P&amp;L (realized/unrealized), and a link to trading history. Vault shows USDC balance and profit history; funder shows outbound SOL distributed.
+                <span className="font-semibold text-white">Cards</span> - Each card shows that agent&apos;s SOL balance and, where applicable, USDC balance (pool, funder, traders). Traders also show volume, P&amp;L (realized/unrealized), and a link to trading history. Vault shows USDC balance and profit history.
               </p>
               <p>
                 <span className="font-semibold text-white">Colors</span> - Blue = pool, amber = traders, emerald = vault, violet = funder. The thin bar at the top of each card uses the same color so you can scan roles quickly.
@@ -1783,7 +1789,7 @@ function AgentCard({
 
       <div className="space-y-4">
         <div>
-          <p className="text-3xl font-bold text-white tracking-tighter">{agent.wallet?.solBalance.toFixed(3) ?? '0.000'} <span className="text-lg text-white/40">SOL</span></p>
+          <p className="text-3xl font-bold text-white tracking-tighter">{agent.wallet?.solBalance != null ? formatNum(agent.wallet.solBalance, 3) : '0.000'} <span className="text-lg text-white/40">SOL</span></p>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-[10px] font-mono text-white/40 truncate max-w-[120px]">{addr}</span>
             <button onClick={() => onCopy(addr)} className="text-white/20 hover:text-white transition-colors">
@@ -1800,7 +1806,7 @@ function AgentCard({
             <div>
               <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">USDC Balance</p>
               <p className="text-sm font-mono text-white" title="On-chain USDC balance (from wallet).">
-                {(agent.wallet?.usdcBalance ?? 0).toFixed(2)}
+                {formatNum(agent.wallet?.usdcBalance ?? 0, 2)}
               </p>
             </div>
           </div>
@@ -1815,8 +1821,8 @@ function AgentCard({
                 </p>
                 <p className="text-sm font-mono text-white">
                   {oraclePrice != null && oraclePrice > 0
-                    ? `$${(agent.stats.totalVolumeSOL * oraclePrice).toFixed(2)}`
-                    : `${agent.stats.totalVolumeSOL.toFixed(2)} SOL`}
+                    ? `$${formatNum(agent.stats.totalVolumeSOL * oraclePrice, 2)}`
+                    : `${formatNum(agent.stats.totalVolumeSOL, 2)} SOL`}
                 </p>
               </div>
             )}
@@ -1824,7 +1830,7 @@ function AgentCard({
               <div>
                 <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">USDC Balance</p>
                 <p className="text-sm font-mono text-white" title="On-chain USDC balance (from wallet).">
-                  {(agent.wallet?.usdcBalance ?? 0).toFixed(2)}
+                  {formatNum(agent.wallet?.usdcBalance ?? 0, 2)}
                 </p>
               </div>
             )}
@@ -1844,35 +1850,27 @@ function AgentCard({
                     <div>
                       <p className="text-white/50 uppercase">Realized</p>
                       <p className={`font-mono ${(pnlUSD ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {pnlUSD != null ? ((pnlUSD >= 0 ? '+' : '') + '$' + pnlUSD.toFixed(2)) : '-'}
+                        {pnlUSD != null ? ((pnlUSD >= 0 ? '+' : '') + '$' + formatNum(pnlUSD, 2)) : '-'}
                       </p>
                     </div>
                     <div>
                       <p className="text-white/50 uppercase">Unrealized</p>
                       <p className={`font-mono ${(unrealizedPnlUSD ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + unrealizedPnlUSD.toFixed(2)) : '-'}
+                        {unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + formatNum(unrealizedPnlUSD, 2)) : '-'}
                       </p>
                     </div>
                     <div>
                       <p className="text-white/50 uppercase">Total</p>
                       <p className={`font-mono ${isTotalPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {(isTotalPositive ? '+' : '') + '$' + totalPnlUSD.toFixed(2)}
+                        {(isTotalPositive ? '+' : '') + '$' + formatNum(totalPnlUSD, 2)}
                       </p>
                     </div>
                   </div>
                 ) : (
                   <p className={`text-sm font-mono ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {pnlUSD != null ? (isPositive ? '+' : '') + '$' + pnlUSD.toFixed(2) : '-'}
+                    {pnlUSD != null ? (isPositive ? '+' : '') + '$' + formatNum(pnlUSD, 2) : '-'}
                   </p>
                 )}
-              </div>
-            )}
-            {id === 'funder' && (
-              <div className="col-span-1">
-                <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Outbound</p>
-                <p className="text-sm font-mono text-violet-300">
-                  {(agent.stats.outboundSOL ?? 0).toFixed(4)} SOL distributed
-                </p>
               </div>
             )}
             {isTrader && onOpenHistory && (
@@ -1895,7 +1893,7 @@ function AgentCard({
             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
               <div>
                 <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">USDC Balance</p>
-                <p className="text-sm font-mono text-emerald-400">{(agent.wallet?.usdcBalance ?? 0).toFixed(2)} USDC</p>
+                <p className="text-sm font-mono text-emerald-400">{formatNum(agent.wallet?.usdcBalance ?? 0, 2)} USDC</p>
               </div>
             </div>
             {(vaultProfitHistory?.length ?? 0) > 0 && (
@@ -1938,7 +1936,7 @@ function AgentCard({
                               </td>
                               <td className="px-2 py-1.5 text-white/80">{fromName}</td>
                               <td className="px-2 py-1.5 font-mono text-emerald-400">
-                                +{entry.amountUsdc != null ? entry.amountUsdc.toFixed(2) : entry.amount.toFixed(4)} {entry.amountUsdc != null ? 'USDC' : 'SOL'}
+                                +{entry.amountUsdc != null ? formatNum(entry.amountUsdc, 2) : formatNum(entry.amount, 4)} {entry.amountUsdc != null ? 'USDC' : 'SOL'}
                               </td>
                               <td className="px-2 py-1.5">
                                 {entry.signature ? (

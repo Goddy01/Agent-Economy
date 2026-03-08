@@ -253,6 +253,10 @@ const HTML_PAGE = `<!DOCTYPE html>
   </div>
   <script>
     const refreshMs = ${REFRESH_MS};
+    function formatNum(n, decimals) {
+      if (decimals != null) return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      return n.toLocaleString();
+    }
     function truncateAddr(addr) {
       if (!addr || addr === '...') return addr;
       if (addr.length <= 14) return addr;
@@ -266,7 +270,7 @@ const HTML_PAGE = `<!DOCTYPE html>
     }
     function render(state) {
       document.getElementById('block').textContent = state.blockHeight.toLocaleString();
-      document.getElementById('price').textContent = state.oraclePrice.toFixed(2);
+      document.getElementById('price').textContent = formatNum(state.oraclePrice, 2);
       const uptime = Math.floor((Date.now() - state.startTime) / 1000);
       document.getElementById('uptime').textContent = Math.floor(uptime/60) + 'm ' + (uptime % 60) + 's';
       document.getElementById('dryRun').style.display = state.dryRun ? 'inline' : 'none';
@@ -289,14 +293,14 @@ const HTML_PAGE = `<!DOCTYPE html>
       var priceChange = ph.length >= 2 ? ((state.oraclePrice - ph[0].p) / ph[0].p) * 100 : 0;
       var linePath = ph.length > 0 ? ph.map(function(d, i){ return (i === 0 ? 'M' : 'L') + ' ' + x(d.t) + ' ' + y(d.p); }).join(' ') : '';
       var areaPath = ph.length > 0 ? linePath + ' L ' + x(ph[ph.length-1].t) + ' ' + (pad.t + ch) + ' L ' + x(ph[0].t) + ' ' + (pad.t + ch) + ' Z' : '';
-      document.getElementById('chart-price').textContent = '$' + state.oraclePrice.toFixed(2);
+      document.getElementById('chart-price').textContent = '$' + formatNum(state.oraclePrice, 2);
       var changeEl = document.getElementById('chart-change');
-      changeEl.textContent = (priceChange >= 0 ? '+' : '') + priceChange.toFixed(2) + '%';
+      changeEl.textContent = (priceChange >= 0 ? '+' : '') + formatNum(priceChange, 2) + '%';
       changeEl.style.color = priceChange >= 0 ? '#3fb950' : '#f85149';
       var svg = '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" style="max-width:100%;height:auto;"><defs><linearGradient id="priceLineGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#22c55e" stop-opacity="0.3"/><stop offset="100%" stop-color="#22c55e" stop-opacity="0"/></linearGradient></defs>';
       yTicks.forEach(function(p, i){ svg += '<line x1="' + pad.l + '" y1="' + y(p) + '" x2="' + (w-pad.r) + '" y2="' + y(p) + '" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>'; });
       xTicks.forEach(function(tick){ svg += '<line x1="' + tick.x + '" y1="' + pad.t + '" x2="' + tick.x + '" y2="' + (pad.t + ch) + '" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>'; });
-      yTicks.forEach(function(p, i){ svg += '<text x="' + (pad.l-6) + '" y="' + (y(p)+4) + '" text-anchor="end" fill="#8b949e" font-size="10" font-family="monospace">$' + p.toFixed(2) + '</text>'; });
+      yTicks.forEach(function(p, i){ svg += '<text x="' + (pad.l-6) + '" y="' + (y(p)+4) + '" text-anchor="end" fill="#8b949e" font-size="10" font-family="monospace">$' + formatNum(p, 2) + '</text>'; });
       xTicks.forEach(function(tick){ var label = new Date(tick.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); svg += '<text x="' + tick.x + '" y="' + (h-6) + '" text-anchor="middle" fill="#8b949e" font-size="9" font-family="monospace">' + escapeHtml(label) + '</text>'; });
       svg += '<line x1="' + pad.l + '" y1="' + curY + '" x2="' + (w-pad.r) + '" y2="' + curY + '" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 2"/>';
       if (areaPath) svg += '<path d="' + areaPath + '" fill="url(#priceLineGrad)"/>';
@@ -314,16 +318,16 @@ const HTML_PAGE = `<!DOCTYPE html>
       var totalSupply = (state.totalSupply != null && state.totalSupply > 0) ? state.totalSupply : 1e6;
       tr.forEach(function(t, i) {
         var col = t.side === 'buy' ? '#22c55e' : '#f59e0b';
-        var solAmt = t.amountSol != null ? t.amountSol.toFixed(4) : '?';
+        var solAmt = t.amountSol != null ? formatNum(t.amountSol, 4) : '?';
         var usdVal = t.amountSol != null ? t.amountSol * t.p : null;
-        var usdStr = usdVal != null ? ' ($' + usdVal.toFixed(2) + ')' : '';
+        var usdStr = usdVal != null ? ' ($' + formatNum(usdVal, 2) + ')' : '';
         var tooltipTitle = t.amountToken != null
           ? (t.side === 'buy'
-            ? escapeHtml(t.agentId) + ' bought ' + solAmt + ' SOL @ $' + t.p.toFixed(2) + ' (MCap $' + (t.p * totalSupply).toFixed(0) + ')' + ' - paid $' + (t.amountToken * t.p).toFixed(2)
-            : escapeHtml(t.agentId) + ' sold ' + solAmt + ' SOL @ $' + t.p.toFixed(2) + ' (MCap $' + (t.p * totalSupply).toFixed(0) + ')' + ' - received $' + (t.amountToken * t.p).toFixed(2))
+            ? escapeHtml(t.agentId) + ' bought ' + solAmt + ' SOL @ $' + formatNum(t.p, 2) + ' (MCap $' + formatNum(t.p * totalSupply, 0) + ')' + ' - paid $' + formatNum(t.amountToken * t.p, 2)
+            : escapeHtml(t.agentId) + ' sold ' + solAmt + ' SOL @ $' + formatNum(t.p, 2) + ' (MCap $' + formatNum(t.p * totalSupply, 0) + ')' + ' - received $' + formatNum(t.amountToken * t.p, 2))
           : (t.side === 'buy'
-            ? escapeHtml(t.agentId) + ' bought ' + solAmt + ' SOL from Pool @ $' + t.p.toFixed(2) + usdStr
-            : escapeHtml(t.agentId) + ' sold ' + solAmt + ' SOL to Pool @ $' + t.p.toFixed(2) + usdStr);
+            ? escapeHtml(t.agentId) + ' bought ' + solAmt + ' SOL from Pool @ $' + formatNum(t.p, 2) + usdStr
+            : escapeHtml(t.agentId) + ' sold ' + solAmt + ' SOL to Pool @ $' + formatNum(t.p, 2) + usdStr);
         var title = tooltipTitle + (t.signature ? ' - Click to view tx on Solscan' : '');
         var cx = x(t.t), cy = y(t.p);
         var marker = '<g><circle cx="' + cx + '" cy="' + cy + '" r="12" fill="' + col + '" stroke="rgba(0,0,0,0.4)" stroke-width="1.5" style="cursor:' + (t.signature ? 'pointer' : 'default') + '" title="' + title + '"/><text x="' + cx + '" y="' + cy + '" text-anchor="middle" dominant-baseline="central" font-size="12" style="pointer-events:none">' + getMarker(t.agentId) + '</text></g>';
@@ -357,7 +361,7 @@ const HTML_PAGE = `<!DOCTYPE html>
       let cardsHtml = agentIds.map(function(id) {
         const a = state.agents[id];
         if (!a) return '';
-        const balance = a.wallet?.solBalance != null ? a.wallet.solBalance.toFixed(3) : '...';
+        const balance = a.wallet?.solBalance != null ? formatNum(a.wallet.solBalance, 3) : '...';
         const agentKind = kind(id);
         const pnlUSD = a.stats.pnlUSD;
         const unrealizedPnlUSD = a.stats.unrealizedPnlUSD;
@@ -369,18 +373,16 @@ const HTML_PAGE = `<!DOCTYPE html>
         const usdcBalance = a.wallet?.usdcBalance ?? 0;
         const pnlTitle = 'Realized = locked-in from sells − cost of buys (incl. gas + DEX fees). Unrealized = (current price − avg entry) × position (paper).';
         const pnlRow = agentKind === 'trader' && (unrealizedPnlUSD != null || pnlUSD != null)
-          ? '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: Realized ' + (pnlUSD != null ? pnlSign + '$' + pnlUSD.toFixed(2) : '-') + ' · Unrealized ' + (unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + unrealizedPnlUSD.toFixed(2)) : '-') + ' · Total ' + (totalPnlUSD >= 0 ? '+' : '') + '$' + totalPnlUSD.toFixed(2) + '</div>'
-          : '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: ' + (pnlUSD != null ? pnlSign + '$' + pnlUSD.toFixed(2) : '-') + '</div>';
+          ? '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: Realized ' + (pnlUSD != null ? pnlSign + '$' + formatNum(pnlUSD, 2) : '-') + ' · Unrealized ' + (unrealizedPnlUSD != null ? ((unrealizedPnlUSD >= 0 ? '+' : '') + '$' + formatNum(unrealizedPnlUSD, 2)) : '-') + ' · Total ' + (totalPnlUSD >= 0 ? '+' : '') + '$' + formatNum(totalPnlUSD, 2) + '</div>'
+          : '<div class="row ' + pnlClass + '" title="' + pnlTitle + '">P&L: ' + (pnlUSD != null ? pnlSign + '$' + formatNum(pnlUSD, 2) : '-') + '</div>';
         const volPnlRows = id === 'vault'
           ? ''
-          : agentKind === 'pool'
+          : agentKind === 'pool' || agentKind === 'funder'
             ? ''
             : (
-                '<div class="row">Vol: ' + a.stats.totalVolumeSOL.toFixed(3) + ' SOL</div>' +
-                (agentKind === 'trader' ? '<div class="row">USDC: ' + usdcBalance.toFixed(2) + '</div>' : '') +
-                (agentKind === 'funder'
-                  ? '<div class="row">Outbound: ' + (a.stats.outboundSOL ?? 0).toFixed(4) + ' SOL</div>'
-                  : pnlRow)
+                '<div class="row">Vol: ' + formatNum(a.stats.totalVolumeSOL, 3) + ' SOL</div>' +
+                (agentKind === 'trader' ? '<div class="row">USDC: ' + formatNum(usdcBalance, 2) + '</div>' : '') +
+                pnlRow
               );
         let strategyRow = '';
         if (agentKind === 'vault') {
@@ -399,7 +401,7 @@ const HTML_PAGE = `<!DOCTYPE html>
           '<div class="row">Trades: ' + a.stats.totalTrades + '</div>' +
           volPnlRows +
           strategyRow +
-          '<div class="row">→ Vault: ' + a.stats.vaultContributions.toFixed(4) + '</div>' +
+          '<div class="row">→ Vault: ' + formatNum(a.stats.vaultContributions, 4) + '</div>' +
           '</div>';
       }).join('');
 
@@ -411,10 +413,10 @@ const HTML_PAGE = `<!DOCTYPE html>
       cardsHtml +=
         '<div class="card vault">' +
         '<h2>Vault status</h2>' +
-        '<div class="balance">' + state.totalVaultBalance.toFixed(3) + ' SOL</div>' +
+        '<div class="balance">' + formatNum(state.totalVaultBalance, 3) + ' SOL</div>' +
         '<div class="row">' + (vaultAddrLink ? addrBlock(vaultAddr, vaultAddrLink) : escapeHtml(vaultAddr)) + '</div>' +
         '<div class="row">Floor: ' + '${VAULT_FLOOR}' + ' SOL LOCKED</div>' +
-        '<div class="row">Received: ' + vaultReceived.toFixed(4) + ' SOL</div>' +
+        '<div class="row">Received: ' + formatNum(vaultReceived, 4) + ' SOL</div>' +
         '<div class="row">Inbound txns: ' + vaultTxns + '</div>' +
         '</div>';
 
@@ -495,8 +497,8 @@ const HTML_PAGE = `<!DOCTYPE html>
           const amount = data.amount != null ? Number(data.amount) : 0;
           const success = data.result && data.result.success !== false;
           return success
-            ? 'Sent <span class="vault-amt">' + amount.toFixed(4) + ' SOL</span> to vault.'
-            : 'Failed to send ' + amount.toFixed(4) + ' SOL to vault.' + (data.result && data.result.error ? ' ' + escapeHtml(data.result.error) : '');
+            ? 'Sent <span class="vault-amt">' + formatNum(amount, 4) + ' SOL</span> to vault.'
+            : 'Failed to send ' + formatNum(amount, 4) + ' SOL to vault.' + (data.result && data.result.error ? ' ' + escapeHtml(data.result.error) : '');
         }
         if (data.type === 'SWAP_FAILED') {
           const reason = data.reason || (data.result && data.result.error) || 'Unknown';
@@ -938,7 +940,6 @@ export class Dashboard {
       vaultContributions: 0,
       lastAction: 'Starting...',
       lastActionTime: Date.now(),
-      outboundSOL: 0,
     };
   }
 }

@@ -256,7 +256,7 @@ export class Orchestrator {
 
     // ── One-time USDC funding for traders (when USDC_MINT is set) ───────────
     const USDC_DECIMALS = 6;
-    const traderUsdcThreshold = 9999;
+    const traderUsdcThreshold = 5000;
     const traderUsdcTopup = 10000;
     if (
       this.usdcMint &&

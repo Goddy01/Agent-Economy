@@ -135,7 +135,6 @@ export class FunderAgent extends BaseAgent {
         if (result.success && result.signature) {
           this.stats.totalTrades += 1;
           this.stats.successfulTrades += 1;
-          this.stats.outboundSOL = (this.stats.outboundSOL ?? 0) + amountSol;
           this.stats.lastAction = `Sent ${amountSol.toFixed(4)} SOL to ${agentId}`;
           this.stats.lastActionTime = Date.now();
           this.emit('trade', {
