@@ -1,143 +1,199 @@
-# Setup and run - How to run the colony
+# Agent Colony — Setup & Demo Guide
 
-This is the single guide for **setting up**, **running**, and **verifying** the agent colony. Use it for first-time setup, judges evaluating the demo, or day-to-day operations.
+> **For bounty judges:** Jump straight to [Judge Quickstart](#judge-quickstart). Total time to a running demo: **~5–8 minutes**.
+> For a deep dive into the wallet design, security model, and AI agent architecture, see [DEEP_DIVE.md](./DEEP_DIVE.md).
 
 ---
 
-## 1. One-time setup
+## What is Agent Colony?
+
+Agent Colony is an autonomous multi-agent economy running on **Solana devnet**. A set of AI-driven agents — vault, funder, liquidity pool, and traders — each hold their own on-chain wallets, make independent financial decisions, and execute real transactions. Traders swap SOL ↔ USDC via **Orca Whirlpools**, the pool manages liquidity, and the funder tops up agent balances automatically. Every decision is logged on-chain via Solana's Memo program, creating a fully verifiable audit trail. A live React dashboard shows balances, P&L, trading history, and on-chain addresses in real time.
+
+**Default colony:** 6 agents (vault + funder + pool + 3 traders). Fully scalable at runtime.
+
+---
+
+## Prerequisites
+
+Before starting, make sure you have:
+
+- **Node.js** v18 or higher (`node --version`)
+- **npm** v9 or higher (`npm --version`)
+- **Git**
+- A stable internet connection (devnet RPC calls required)
+- No need for a Solana wallet or CLI — the colony manages its own keys
+
+> Tested on macOS and Linux. Windows users should use WSL2.
+
+---
+
+## Judge Quickstart
+
+The fastest path to a fully running demo with on-chain USDC trading.
+
+### Step 1 — Clone and install
 
 ```bash
 git clone https://github.com/Goddy01/Agent-Economy.git
 cd agent-colony
 npm install
-
 cp .env.example .env
 ```
 
-Edit `.env` and set **one required variable**:
+### Step 2 — Set your passphrase
 
-```env
-MASTER_PASSPHRASE="your-secret-at-least-32-characters"
+Open `.env` and set one required variable. Run this to generate a secure value:
+
+```bash
+npm run generate-passphrase
 ```
 
-Use at least 32 characters. To generate one: run `npm run generate-passphrase` and paste the printed line into `.env`. Never commit `.env` or `.agent-colony-vault.json` to git.
+Paste the printed line into `.env`:
 
-**Optional:** 24-word recovery phrase shown once during `npm run setup`. Use this to restore your vault if `.agent-colony-vault.json` is lost. Only set `RECOVERY_PHRASE="word1 word2 ... word24"` in `.env` when restoring.
+```env
+MASTER_PASSPHRASE="your-generated-passphrase-here"
+```
 
-After first run or `npm run setup`, the file `.agent-colony-vault.json` is created (encrypted key material). Keep it and `.env` only on machines you trust.
-
----
-
-## 2. Full demo with USDC (recommended for judges)
-
-To see the full system (SOL/USDC trading, USDC balances on pool, funder, and traders):
+### Step 3 — Initialize the colony
 
 ```bash
 npm run setup
+```
+
+This creates an encrypted vault, generates agent wallets, and airdrops devnet SOL. You'll see each agent's wallet address printed — **save these** for on-chain verification. A 24-word recovery phrase is also shown once here; store it somewhere safe.
+
+### Step 4 — Fund the funder wallet
+
+The funder wallet address is printed by `npm run setup` and labeled **"Funder (send SOL here)"** on the dashboard. Top it up with devnet SOL before the next step — the funder pays for USDC mint creation and token accounts.
+
+Get devnet SOL from: [faucet.solana.com](https://faucet.solana.com) or [solfaucet.com](https://solfaucet.com)
+
+### Step 5 — Create the USDC token
+
+```bash
 npm run create-usdc-token
+```
+
+This mints a new USDC SPL token on devnet, updates `USDC_MINT` in `.env`, and funds the pool and traders. Each trader starts with **0.2 SOL + 10,000 USDC**.
+
+### Step 6 — Build and launch
+
+```bash
 npm run build:dashboard && npm run start
 ```
 
-- **npm run setup** creates the encrypted vault and agent wallets and airdrops SOL where needed.
-- **npm run create-usdc-token** creates a new USDC SPL mint on devnet (platform stablecoin), updates `USDC_MINT` in `.env`, mints USDC to the funder, and transfers the pool's share to the pool. **Top up the funder wallet with SOL first** (the funder pays for mint creation and token accounts). Run after setup for the full demo. Each run creates a new USDC mint; re-run when you want a fresh mint (e.g. after a devnet reset).
-- **npm run build:dashboard && npm run start** builds the React dashboard and starts the colony.
-
-**Funder (source of SOL):** Send SOL (devnet) to the funder’s wallet address (shown by `npm run setup` and on the dashboard as “Funder (send SOL here)”). You must top up the funder with SOL before running **npm run create-usdc-token** (the funder pays for mint and token account creation). At startup, each trader is funded with **0.2 SOL** and **10k USDC** (one-time from the funder); new traders added from the dashboard get the same. The funder holds SOL and USDC reserves and tops up the pool and traders. Send SOL to the funder wallet (see dashboard or `npm run setup`). Non-traders use **TARGET_AGENT_SOL** (default 1.0); traders use 0.2 SOL (**FUNDER_TRADER_TARGET_SOL**).
+Open **[http://localhost:3555](http://localhost:3555)**. Within **1–2 minutes** you should see agent decisions, balance changes, and transaction history in the dashboard.
 
 ---
 
-## 3. What you’ll see
+## What to Expect (Proof It's Working)
 
-When the colony has started:
+Once the colony is running, here's what confirms it's functioning correctly:
 
-- Terminal: a line like `Dashboard: http://localhost:3555` and periodic agent tick logs.
-- Browser: open **[http://localhost:3555](http://localhost:3555)**. Header shows block height, SOL/USDC price, and that USDC is the platform stablecoin. **Scale the colony** panel adds traders. **Treasury, Funding & Pool**: vault (USDC balance), funder (SOL and USDC reserves, outbound SOL), pool (SOL and USDC). **Traders**: each card shows SOL and **USDC Balance**; volume (in USD when price available), P&L, and trading history. Vault card shows **USDC Balance**. Default: vault + funder + pool + 3 traders (6 agents).
+| Signal | Where to see it |
+|---|---|
+| Block height incrementing | Dashboard header |
+| Live SOL/USDC price | Dashboard header |
+| Agent balance changes | Trader cards (SOL + USDC balances update each tick) |
+| On-chain transactions | Click any wallet address → opens Solscan devnet |
+| Memo-tagged decisions | Solscan tx detail → "Memo" instruction shows agent rationale |
+| Orca swap transactions | Trader card history; verify on Solscan as Orca Whirlpools program calls |
+| Funder outbound SOL | Treasury panel → "Outbound" field increments as agents are funded |
 
-Agents tick on the interval set by **COLONY_TICK_MS** (default 10–60s per agent type). Within 1–2 minutes you should see decisions and balance updates.
+**Tick cadence:** Agents act on the interval set by `COLONY_TICK_MS` (default varies by agent type, typically 10–60s). Allow 1–2 minutes after startup for the first round of decisions.
 
----
+### Verifying on-chain
 
-## 4. Environment variables
-
-
-| Variable                     | What it does                                                                                                                                              | Example / default                                    |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| **MASTER_PASSPHRASE**        | Decrypts the vault and derives agent keys. **Required.**                                                                                                  | At least 32 chars; use `npm run generate-passphrase` |
-| **RECOVERY_PHRASE**          | 24-word recovery phrase shown once during `npm run setup`. Use this to restore your vault if `.agent-colony-vault.json` is lost. Only set when restoring. | `"word1 word2 ... word24"`                           |
-| **SOLANA_RPC_URL**           | Which Solana RPC to use.                                                                                                                                  | `https://api.devnet.solana.com`                      |
-| **USDC_MINT**                | SPL mint for USDC (full demo). Set by `npm run create-usdc-token`.                                                                                        | (added by script)                                    |
-| **RATE_LIMIT_TX_PER_MINUTE** | Max transactions per agent per minute.                                                                                                                    | `15`                                                 |
-| **DRY_RUN**                  | If `true`, simulate and log but **never send** transactions.                                                                                              | `false`                                              |
-| **TARGET_AGENT_SOL**         | Target SOL for non-trader agents (funder tops up pool, etc.). Traders use **FUNDER_TRADER_TARGET_SOL** (0.2).                                             | `1.0`                                                |
-| **INITIAL_TRADER_SOL**       | One-time SOL per trader at startup and when adding from dashboard.                                                                                        | `0.2`                                                |
-| **FUNDER_TRADER_TARGET_SOL** | Funder tops up traders to this SOL level.                                                                                                                 | `0.2`                                                |
-| **COLONY_TICK_MS**           | Base tick interval (ms) for agent decision loops.                                                                                                         | e.g. `3000`                                          |
-| **DASHBOARD_REFRESH_MS**     | How often the dashboard polls for updates (ms).                                                                                                           | `3000`                                               |
-| **OPENAI_API_KEY**           | Optional; enables LLM rationale text.                                                                                                                     | (optional)                                           |
-
+1. **Dashboard → wallet address** (each card shows it) or run `npm run show-agent-addresses`
+2. Paste into [Solscan devnet](https://solscan.io/?cluster=devnet)
+3. Confirm: recent transactions, SOL balance, USDC token account, Memo instructions
 
 ---
 
-## 5. Commands
+## Scaling the Colony
 
+| Mode | How |
+|---|---|
+| **4-agent** | Set `AGENT_IDS=vault,funder,pool,trader` in `.env`, then `npm run setup` |
+| **6-agent (default)** | Leave `AGENT_IDS` unset |
+| **Add traders live** | Dashboard → **Scale the colony** panel → choose a preset → **Add agents to colony** |
+| **Stress test (no tx)** | `npm run colony:stress` — many agents, dry run only |
 
-| Command                                  | What it does                                                                                               |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **npm install**                          | Install dependencies. Run once (or after pulling).                                                         |
-| **npm run setup**                        | Create vault and agent wallets on devnet; airdrop SOL if needed. Run once before first start.              |
-| **npm run create-usdc-token**            | Create a new USDC SPL token and set `USDC_MINT` in `.env`. Top up funder with SOL first (funder pays for mint). Each run creates a new mint. Required for full demo. Run after setup. |
-| **npm run start**                        | Start colony and dashboard. Dashboard: [http://localhost:3555](http://localhost:3555) (or DASHBOARD_PORT). |
-| **npm run colony:dry**                   | Same as `DRY_RUN=true npm run start` - no transactions sent.                                               |
-| **npm run demo**                         | One-shot: setup → build dashboard → start (create USDC separately if needed).                              |
-| **npm run build**                        | Compile TypeScript (backend).                                                                              |
-| **npm run build:dashboard**              | Build React dashboard. Run if dashboard doesn’t load.                                                      |
-| **npm run generate-passphrase**          | Print a secure MASTER passphrase line to add to `.env`.                                                           |
-| **npm run restore-vault**                | Restore vault from 24-word recovery phrase (`RECOVERY_PHRASE` in `.env`).                                  |
-| **npm run recover-agent-sol**            | Sweep SOL from legacy agent wallets into vault or `SWEEP_TO_ADDRESS`.                                      |
-| **npm run sweep-to-funder**              | Move SOL to the funder wallet.                                                                             |
-| **npm run show-agent-addresses**         | Print all agent wallet addresses.                                                                          |
-| **npm run check-balances**               | Show SOL and USDC (if configured) for all agents.                                                          |
-| **npm run teardown -- <WALLET-ADDRESS>** | Sweep agent SOL to address and remove local vault. Use `--dry-run` to preview.                             |
-| **npm run colony:stress**                | Run with many traders in DRY_RUN (scale test, no tx sent).                                                 |
-| **npm test**                             | Run test suite (including circuit breakers).                                                               |
-| **npm run test:security**                | Run security and transaction tests.                                                                        |
-| **npm run security:check**               | Check for secrets in code and run dependency audit.                                                        |
-
+Each trader added from the dashboard is funded automatically by the funder (0.2 SOL + 10k USDC).
 
 ---
 
-## 6. Scale the colony (scalability)
+## All Commands
 
-- **4-agent:** `AGENT_IDS=vault,funder,pool,trader` then `npm run setup` and `npm run start`.
-- **6-agent (default):** Leave `AGENT_IDS` unset.
-- **Add traders at runtime:** Use the **Scale the colony** panel on the dashboard: choose a Preset (or Custom), then **Add agents to colony**. Each click adds a new trader; funder Outbound shows on-chain scaling.
-- **9+ stress (dry run):** `npm run colony:stress` - many agents, no transactions sent.
+| Command | What it does |
+|---|---|
+| `npm install` | Install dependencies. Run once. |
+| `npm run setup` | Create vault, agent wallets, airdrop devnet SOL. Run once before first start. |
+| `npm run create-usdc-token` | Create USDC SPL mint, set `USDC_MINT` in `.env`, fund pool and traders. Run after setup. |
+| `npm run start` | Start colony and dashboard at [http://localhost:3555](http://localhost:3555) |
+| `npm run build:dashboard` | Build the React dashboard. Run if dashboard doesn't load. |
+| `npm run build` | Compile TypeScript backend. |
+| `npm run colony:dry` | Start with `DRY_RUN=true` — logs decisions but sends no transactions. |
+| `npm run demo` | One-shot: setup → build → start (create USDC separately). |
+| `npm run generate-passphrase` | Print a secure passphrase to paste into `.env`. |
+| `npm run restore-vault` | Restore vault from 24-word recovery phrase (`RECOVERY_PHRASE` in `.env`). |
+| `npm run recover-agent-sol` | Sweep SOL from legacy agent wallets into vault or `SWEEP_TO_ADDRESS`. |
+| `npm run sweep-to-funder` | Move SOL to the funder wallet. |
+| `npm run show-agent-addresses` | Print all agent wallet addresses. |
+| `npm run check-balances` | Show SOL and USDC balances for all agents. |
+| `npm run teardown -- <WALLET>` | Sweep agent SOL to address and remove local vault. Use `--dry-run` to preview. |
+| `npm run colony:stress` | Stress test with many traders in dry run (no tx sent). |
+| `npm test` | Run test suite (includes circuit breaker tests). |
+| `npm run test:security` | Run security and transaction tests. |
+| `npm run security:check` | Scan for secrets in code and run dependency audit. |
 
 ---
 
-## 7. Verify on-chain
+## Environment Variables
 
-- **Addresses:** Each dashboard card shows the wallet address; same as printed by `npm run setup` or `npm run show-agent-addresses`.
-- **Solscan:** Click an address or paste into [Solscan devnet](https://solscan.io/?cluster=devnet). Check SOL and recent transactions.
-- **Memos:** Many transactions include a Memo program instruction with agent decision/rationale (on-chain audit trail).
-- **Orca:** Trader swaps show Orca Whirlpools program transactions (depends on devnet liquidity).
+| Variable | What it does | Default / Example |
+|---|---|---|
+| `MASTER_PASSPHRASE` | Decrypts vault and derives agent keys. **Required.** | ≥32 chars; use `npm run generate-passphrase` |
+| `RECOVERY_PHRASE` | 24-word phrase shown once during setup. Only set this when restoring a vault. | `"word1 word2 ... word24"` |
+| `SOLANA_RPC_URL` | Solana RPC endpoint. | `https://api.devnet.solana.com` |
+| `USDC_MINT` | SPL mint address for USDC. Set automatically by `npm run create-usdc-token`. | (added by script) |
+| `RATE_LIMIT_TX_PER_MINUTE` | Max transactions per agent per minute. | `15` |
+| `DRY_RUN` | If `true`, simulate and log but never send transactions. | `false` |
+| `TARGET_AGENT_SOL` | SOL target for non-trader agents (vault, pool, funder). | `1.0` |
+| `INITIAL_TRADER_SOL` | One-time SOL sent to each trader at startup or when added from dashboard. | `0.2` |
+| `FUNDER_TRADER_TARGET_SOL` | Funder tops traders up to this SOL level. | `0.2` |
+| `COLONY_TICK_MS` | Base tick interval (ms) for agent decision loops. | `3000` |
+| `DASHBOARD_REFRESH_MS` | How often the dashboard polls for updates (ms). | `3000` |
+| `OPENAI_API_KEY` | Optional. Enables LLM-generated rationale text in agent decisions. | (optional) |
 
 ---
 
-## 8. Safe vs unsafe
+## Security
 
-**Safe:** Devnet with your own `.env` and vault file; `DRY_RUN=true` or `npm run colony:dry` to test without sending tx; keeping `.env` and `.agent-colony-vault.json` off git and only on your machine; running `npm run security:check` and `npm test` before pushing.
+**Safe practices:**
+- Run on devnet only with your own `.env` and vault file
+- Use `DRY_RUN=true` or `npm run colony:dry` to test without sending transactions
+- Never commit `.env` or `.agent-colony-vault.json` to git (both are in `.gitignore`)
+- Run `npm run security:check` and `npm test` before pushing
 
-**Unsafe:** Putting `MASTER_PASSPHRASE` (or any secret) in source code; committing `.env` or `.agent-colony-vault.json`; using mainnet or real funds before a security review; sharing passphrase or vault file.
+**Never do this:**
+- Put `MASTER_PASSPHRASE` in source code
+- Share or commit your vault file
+- Use mainnet or real funds without a thorough security review
 
 ---
 
-## 9. If something goes wrong
+## Troubleshooting
 
-- **“MASTER_PASSPHRASE must be set”** - Add a long passphrase to `.env`. Use quotes if it contains `=` or spaces.
-- **“Vault not initialized” / missing vault file** - Run `npm run setup` once. If you lost the vault, use `npm run restore-vault` with `RECOVERY_PHRASE` set in `.env`.
-- **Transactions blocked (rate limit)** - Circuit breakers are working. Adjust limits in `.env` only if you understand the risk.
-- **Dashboard not loading** - Run `npm run build:dashboard`, then `npm run start`.
-- **SOL in legacy agent wallets from an older config** - Run `npm run recover-agent-sol` (optional: `SWEEP_FROM_AGENTS`, `SWEEP_TO_ADDRESS`, `MIN_SOL` in `.env`).
+| Error | Fix |
+|---|---|
+| `"MASTER_PASSPHRASE must be set"` | Add a long passphrase to `.env`. Wrap in quotes if it contains `=` or spaces. |
+| `"Vault not initialized"` / missing vault file | Run `npm run setup`. If vault is lost, set `RECOVERY_PHRASE` in `.env` and run `npm run restore-vault`. |
+| Transactions blocked (rate limit) | Circuit breakers are working as intended. Adjust `RATE_LIMIT_TX_PER_MINUTE` in `.env` only if you understand the risk. |
+| Dashboard not loading | Run `npm run build:dashboard`, then `npm run start`. |
+| SOL stuck in old agent wallets | Run `npm run recover-agent-sol`. Optionally set `SWEEP_FROM_AGENTS`, `SWEEP_TO_ADDRESS`, `MIN_SOL` in `.env`. |
+| Devnet airdrop fails | Devnet faucets are rate-limited. Try [faucet.solana.com](https://faucet.solana.com) or wait a few minutes and retry `npm run setup`. |
 
-For wallet design, security model, and how the wallet interacts with AI agents, see [DEEP_DIVE.md](./DEEP_DIVE.md).
+---
+
+> For wallet architecture, key derivation, agent decision logic, and the security model, see [DEEP_DIVE.md](./DEEP_DIVE.md).

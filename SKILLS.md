@@ -7,6 +7,10 @@
 This system provides autonomous, multi-agent Solana wallet infrastructure for AI agents.
 Each agent controls an independent HD-derived wallet with enforced safety constraints.
 
+### Typical flow
+
+Funder holds SOL and USDC reserves and tops up the pool and traders. Traders get price from the oracle, decide buy/sell against the pool via the DEX adapter, and submit transactions through the TransactionEngine (simulate → sign → send). Traders periodically send profit in USDC to the vault. The pool is a passive liquidity counterparty; the vault only receives and does not send. All on-chain decisions can be logged via the memo program.
+
 ## Agent Capabilities
 
 ### Available Agents
@@ -96,6 +100,12 @@ All transactions pass through `TransactionEngine` which enforces:
 | Simulation required | Always  | Not configurable           |
 | Dry run mode        | false   | `DRY_RUN=true`             |
 
+### Do not (for agents)
+
+- **Do not** expect or request private key bytes — agents never receive them; they call the vault to sign by agent ID only.
+- **Do not** bypass the TransactionEngine — all transactions must go through `executeTransaction()` so simulation and rate limits apply.
+- **Do not** assume a transaction will be sent if simulation fails or the rate limit is hit; check `TransactionResult.simulationPassed` and `blockedBy`.
+- **Do not** use `requestAirdrop` from within agent decision logic; the funder does not airdrop — send SOL to the funder wallet to top up.
 
 ---
 

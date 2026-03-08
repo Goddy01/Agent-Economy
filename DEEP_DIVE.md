@@ -124,7 +124,6 @@ Together this demonstrates “ability to simulate decision-making or execution b
 
 - TEE (e.g. Intel SGX, AWS Nitro) for signing in a hardened environment.
 - MPC or threshold schemes for institutional or high-value agents.
-- On-chain or policy layers that further restrict which transactions an agent is allowed to submit.
 
 ---
 
