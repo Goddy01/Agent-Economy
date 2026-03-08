@@ -161,8 +161,8 @@ Open **[http://localhost:3555](http://localhost:3555)**. Within **1-2 minutes** 
 
 ### Verifying on-chain
 
-1. **Dashboard -> wallet address** (each card shows it) or run `npm run show-agent-addresses`
-2. Paste into [Solscan devnet](https://solscan.io/?cluster=devnet)
+1. **Dashboard -> wallet address** (each agent card includes a direct link to view the wallet on Solscan)
+2. Click the Solscan link to open the agent's wallet on [Solscan devnet](https://solscan.io/?cluster=devnet)
 3. Confirm: recent transactions, SOL balance, USDC token account, Memo instructions
 
 ---
