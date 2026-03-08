@@ -1,140 +1,252 @@
 # Deep Dive: AI Agent Wallet Design, Security, and Agent Interaction
 
-This document is the **written deep dive** for the bounty: it explains wallet design, security considerations, and how the agentic wallet interacts with AI agents in a secure, sandboxed environment.
+This document covers three things: how the agentic wallet is designed and why, how security is enforced at every layer, and how AI agents interact with the wallet without ever touching a private key. It is written for the bounty deep dive requirement but also serves as the authoritative technical reference for the codebase.
+
+For setup and on-chain verification, see [SETUP.md](./SETUP.md). For the wallet API and agent extension guide, see [SKILLS.md](./SKILLS.md).
 
 ---
 
-## 1. Wallet design
+## 1. Wallet Design
 
-### 1.1 What I built
+### 1.1 Core Design: One Seed, Many Agents
 
-- **One encrypted master seed**  - Stored in a single file (e.g. `.agent-colony-vault.json`), encrypted with AES-256-GCM. The key for decryption is derived from a passphrase using Argon2id (no raw seed or private keys on disk).
-- **HD derivation for agent keys**  - Each agent gets a deterministic key from the same seed via BIP-44-style paths: `m/44'/501'/{index}'/0'`. Index 0 = vault, 1 = funder, 2 = pool, 3+ = traders. Adding agents only requires new indices; no new secrets.
-- **Programmatic wallet creation**  - Wallets are created on demand: `WalletManager.createWallet(agentId)` (idempotent). The vault either derives a new key for that agent or returns the existing address. No manual key generation or import.
-- **Wallet capabilities:** Each agent wallet holds SOL (devnet) and the SPL token USDC (platform stablecoin), and signs transactions via a single API. Trading uses SOL and USDC. Run `npm run create-usdc-token` to create a new mint and set `USDC_MINT` in `.env` (each run creates a new USDC mint). Top up the funder wallet with SOL first, since it pays for mint creation. With USDC enabled, traders swap with the pool (Orca Whirlpools); the funder holds SOL and USDC reserves, and traders send profit to the vault in USDC. Each trader is funded with 0.2 SOL and 10k USDC at startup and when added from the dashboard.
+The entire colony runs from a single encrypted master seed. Every agent wallet is derived deterministically from that seed — no separate key files, no manual key generation, no per-agent secrets to manage.
 
-### 1.2 Why this design
+```
+Master seed (encrypted at rest)
+    └── HD derivation: m/44'/501'/{index}'/0'
+            ├── index 0  →  vault agent wallet
+            ├── index 1  →  funder agent wallet
+            ├── index 2  →  pool agent wallet
+            ├── index 3  →  trader wallet
+            ├── index 4  →  trader2 wallet
+            └── index N  →  any future agent (new index, no new secret)
+```
 
-- **Single secret to manage**  - One passphrase (and one recovery phrase) backs all agent keys; operations and recovery are simpler than per-agent key storage.
-- **Agent isolation without key sprawl**  - Agents are isolated by derivation path and by the fact they never see private key bytes; only the vault holds the seed and performs signing.
-- **Auditability**  - All agent decisions can be written on-chain (memos); the dashboard and RPC allow observing balances and history per agent.
+This is the same pattern used by multi-account wallets like Phantom — applied to agent identities rather than human accounts. Adding a new agent requires only a new derivation index. Recovery of all agent wallets from a single 24-word phrase is a natural consequence of the design, not an afterthought.
 
----
+### 1.2 Programmatic Wallet Creation
 
-## 2. Security considerations
+Wallets are created on demand via `WalletManager.createWallet(agentId)`. The call is idempotent — if a wallet already exists for that agent ID, it returns the existing address. No manual steps, no import flow.
 
-### 2.1 Key management and storage
+```typescript
+// Agents never call this directly — the colony orchestrator handles provisioning
+const address = await walletManager.createWallet('trader4');
+// Returns the public address. Private key stays in KeyVault.
+```
 
+### 1.3 What Each Agent Wallet Holds
 
-| Concern                    | Approach                                                                                                                                                                 |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **At-rest protection**     | Master seed encrypted with AES-256-GCM; encryption key derived from passphrase via Argon2id (memory-hard, GPU-resistant).                                                |
-| **No key export**          | There is no API to export private keys or the seed. Agents only get public addresses and request signing by agent ID.                                                    |
-| **Key lifetime in memory** | Seed and derived keys are used only for the duration of a sign operation; buffers are zeroed immediately after use.                                                      |
-| **Recovery**               | One-time recovery phrase (BIP-39) shown at vault creation; restore flow allows re-creating the vault from that phrase so the same addresses (and funds) are recoverable. |
+Every agent wallet holds:
+- **SOL** — for transaction fees and trading capital
+- **USDC (SPL)** — the platform stablecoin; used for swaps, pool liquidity, and vault profit
 
+At startup, each trader receives **0.2 SOL + 10,000 USDC** from the funder. The same provisioning runs automatically when a trader is added from the dashboard at runtime. Run `npm run create-usdc-token` after setup to create the USDC mint and fund all agents (see [SETUP.md](./SETUP.md)).
 
-### 2.2 Transaction safety (sandboxing)
+### 1.4 Why This Design
 
-- **Simulate before send**  - Every transaction is simulated before being sent. Failures are caught before any SOL is spent.
-- **Circuit breakers**  - Enforced in a single place (`TransactionEngine`), not in agent code:
-  - **Rate limit**  - Sliding window cap (e.g. 15 tx/min) per agent to prevent runaway loops.
-- **Dry run mode**  - When `DRY_RUN=true`, agents run and “decide” but no transaction is broadcast; only simulation runs. Useful for demos and testing without spending SOL.
-
-### 2.3 Threat model (summary)
-
-- **Prompt injection / malicious oracle data**  - Mitigated by using a deterministic rule engine for decisions; the LLM is used only for optional rationale, not for authorizing spends.
-- **Key exfiltration**  - Mitigated by encrypted storage, no export API, and zeroing of key material after use.
-- **Runaway agent / buggy logic**  - Mitigated by rate limits enforced in the transaction layer, so agents cannot bypass them.
-
----
-
-## 3. How the wallet interacts with AI agents
-
-### 3.1 Separation of responsibilities
-
-- **Agents** (e.g. in `src/agents/`) contain the “brain”: they read oracles, decide (e.g. buy, sell, transfer to vault), and call wallet/transaction APIs. They do **not** hold keys, build raw transactions (except via helpers), or sign.
-- **Wallet / signing layer** (`KeyVault`, `WalletManager`, `TransactionEngine`) holds keys, creates or accepts transactions, enforces limits, simulates, and signs. Agents only invoke methods like `createWallet`, `getSolBalance`, `buildTransferTransaction`, and `executeTransaction`.
-
-This keeps “AI” logic (decisions, rationale) separate from “wallet” logic (keys, signing, safety checks), so the agentic wallet can be reasoned about and hardened independently.
-
-### 3.2 Automated transaction signing (no manual input)
-
-- Agents run on a timer (e.g. every 10-60 seconds). When an agent decides to act, it:
-  1. Builds or obtains a transaction (e.g. via `WalletManager.buildTransferTransaction` or Orca adapter).
-  2. Calls `TransactionEngine.executeTransaction(agentId, transaction, description)`.
-  3. The engine checks rate limit, simulates, then calls `KeyVault.sign({ agentId, transaction, description })`.
-  4. The vault decrypts the seed (with the passphrase already in env), derives the key for that `agentId`, signs the transaction, and returns. No human prompt or approval step.
-
-So “automated transaction signing without manual input” is satisfied: signing is triggered only by agent logic and env-configured passphrase.
-
-### 3.3 Simulated decision-making and execution
-
-- **Decision-making:** Implemented as agent-specific logic (e.g. Trader trades spread against the pool). Optional LLM step adds human-readable rationale; the decision to act is driven by deterministic rules so the system is predictable and safe.
-- **Execution**  - Decisions are turned into transactions (transfer, swap, memo) and pushed through the same pipeline: circuit breakers → simulation → sign → send. Memos record the decision on-chain for audit.
-
-Together this demonstrates “ability to simulate decision-making or execution by an AI agent” in a controlled way.
-
-### 3.4 Scalability: multiple agents independently
-
-- **Per-agent isolation with shared vault**
-  - Each agent has a distinct `agentId` and a distinct HD index, so each has its own wallet and balance.
-  - All agents share one KeyVault (one seed, one passphrase) but cannot access each other’s keys; they only request signing for their own `agentId`.
-- **Presets via the agent registry**
-  - The agent registry in `src/colony/agentRegistry.ts` defines the default set of agents:
-    - `vault` → vault agent
-    - `funder` → funder agent (redistributes SOL to others)
-    - `pool` → pool agent (liquidity reserve; profits come from here)
-    - `trader`, `trader2`, `trader3` → Trader agents
-  - This yields **6 agents by default**, each with its own HD-derived wallet, rate-limit window, and dashboard card.
-  - The list is overrideable via `AGENT_IDS` (comma-separated) in `.env`, e.g.:
-    ```bash
-    # Minimal 4-agent preset
-    AGENT_IDS=vault,funder,pool,trader
-    ```
-- **Stress-test mode (9+ agents, dry run)**
-  - Because `getAgentKind` in `agentRegistry` uses **id prefixes** (`vault`, `funder`, `pool`, `trader`*), you can safely add more agents just by extending `AGENT_IDS` (e.g. `trader4`, `trader5`, etc.).
-  - The `npm run colony:stress` script runs the orchestrator with an expanded `AGENT_IDS` set (more traders) and `DRY_RUN=true`, so:
-    - Agents still make decisions and push transactions through the full safety pipeline.
-    - Circuit breakers and simulations run as usual.
-    - No signed transactions are broadcast to devnet.
-  - This demonstrates that the **wallet, circuit breakers, and dashboard scale to 9+ agents** without any change to the key model or transaction engine.
+| Design choice | Rationale |
+|---|---|
+| Single encrypted seed | One secret to back up, one passphrase to manage, one recovery flow |
+| HD derivation per agent | Agent isolation without key sprawl; deterministic and auditable |
+| No key export API | Agents cannot exfiltrate keys — they request signing, never bytes |
+| Idempotent wallet creation | Safe to call repeatedly; no duplicate wallets or orphaned keys |
 
 ---
 
-## 4. Additional design notes
+## 2. Security
 
-### 4.1 Why HD derivation instead of separate keys
+### 2.1 Encryption at Rest
 
-- One backup (recovery phrase) restores all agent wallets.
-- Key generation and storage stay simple: one encrypted seed, many public addresses.
-- Same industry pattern as multi-account wallets (e.g. Phantom), applied to agent identities.
+The master seed is never stored in plaintext. The vault file (`.agent-colony-vault.json`) contains only ciphertext.
 
-### 4.2 Why Argon2id
+**Encryption:** AES-256-GCM — authenticated encryption; tampering with the ciphertext is detectable.
 
-- Memory-hard KDF slows down brute-force and GPU/ASIC attacks on the passphrase.
-- Preferable to PBKDF2 or plain bcrypt for deriving encryption keys from a passphrase.
+**Key derivation:** Argon2id — a memory-hard KDF that makes brute-force attacks on the passphrase expensive even with GPU hardware. Chosen over PBKDF2 and bcrypt specifically because it resists GPU and ASIC acceleration.
 
-### 4.3 On-chain memo as audit trail
+```
+MASTER_PASSPHRASE
+    → Argon2id (memory-hard, GPU-resistant)
+        → 256-bit encryption key
+            → AES-256-GCM decrypt
+                → master seed (in memory, duration of sign operation only)
+```
 
-- Agent decisions are written to the Solana Memo program so that “who decided what and when” is verifiable on-chain and not only in logs.
-- Complements the web dashboard and RPC for observability and judging.
+**Key lifetime in memory:** The seed and all derived keys are held in memory only for the duration of a single signing operation. Buffers are zeroed immediately after use. There is no persistent in-memory key cache.
 
-### 4.4 What production would add
+### 2.2 No Key Export
 
-- TEE (e.g. Intel SGX, AWS Nitro) for signing in a hardened environment.
-- MPC or threshold schemes for institutional or high-value agents.
+There is no API to retrieve a private key or the raw seed. The `KeyVault` exposes exactly one signing interface:
+
+```typescript
+// The only way to use a key — by agent ID, never by key material
+await keyVault.sign({
+  agentId: 'trader',
+  transaction: tx,
+  description: 'SOL → USDC swap, spread trade'
+});
+```
+
+Agents, adapters, and scripts sit entirely outside the vault. They pass a transaction and an agent ID. The vault derives the key, signs, zeros the buffer, and returns the signed transaction. Nothing else is exposed.
+
+### 2.3 Transaction Safety: Simulate Before Send
+
+Every transaction is simulated against devnet before being broadcast. If simulation fails — insufficient balance, bad instruction, slippage too high — the transaction is dropped and the error is logged. No SOL is spent on failed transactions.
+
+```typescript
+// Inside TransactionEngine — enforced for every agent, every transaction
+const simulation = await connection.simulateTransaction(tx);
+if (simulation.value.err) {
+  throw new TransactionSimulationError(simulation.value.err, description);
+}
+// Only reaches here if simulation passed
+await connection.sendRawTransaction(signedTx.serialize());
+```
+
+### 2.4 Circuit Breakers
+
+Rate limiting is enforced in `TransactionEngine` — not in agent code. Agents cannot bypass it.
+
+- **Sliding window rate limit:** Maximum transactions per agent per minute (default: 15, configurable via `RATE_LIMIT_TX_PER_MINUTE`). Prevents runaway loops from a buggy or compromised agent.
+- **Dry run mode:** When `DRY_RUN=true`, the full decision and simulation pipeline runs, but `sendRawTransaction` is never called. Useful for demos, testing, and stress runs without spending SOL.
+
+The circuit breakers apply uniformly regardless of which agent triggers the transaction. An agent cannot escalate its own limits.
+
+### 2.5 Threat Model
+
+| Threat | Mitigation |
+|---|---|
+| **Passphrase brute-force** | Argon2id KDF; memory-hard and GPU-resistant |
+| **Vault file theft** | AES-256-GCM encryption; ciphertext is useless without the passphrase |
+| **Key exfiltration via agent code** | No key export API; agents never receive key material |
+| **Prompt injection / malicious oracle data** | Decisions are driven by deterministic rule engine; LLM is used only for optional human-readable rationale, never for authorizing transactions |
+| **Runaway agent / buggy logic** | Rate limiting enforced at the transaction layer; agents cannot bypass it |
+| **Transaction failure wasting SOL** | Simulate-before-send catches failures before broadcast |
+| **Secrets in source code** | `npm run security:check` scans for committed secrets; `.env` and vault file are in `.gitignore` |
 
 ---
 
-## 5. Bounty criteria mapping
+## 3. How the Wallet Interacts with AI Agents
 
+### 3.1 Separation of Responsibilities
 
-| Criterion                                                  | How this submission addresses it                                                                                                                                                                                     |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Functional demonstration of an autonomous agent wallet** | Six agents run on devnet (vault, funder, pool, traders); each has a wallet, signs txs, holds SOL and USDC, and interacts with Orca and Memo. Traders trade against the pool; profit is sent to the vault in USDC. Dashboard shows USDC balance on the vault and USDC balance on pool, funder, and traders. |
-| **Security and proper key management**                     | Encrypted vault, Argon2id, no key export, zeroing after use, circuit breakers, simulate-before-send, optional dry run.                                                                                               |
-| **Clear documentation and deep dive**                      | This document (design, security, agent interaction); README (setup, bounty alignment); SKILLS.md (API and safety for agents/judges).                                                                                 |
-| **Scalability: multiple agents independently**             | Multiple agents today (vault, funder, pool, traders); adding more is a new derivation index; shared vault, independent wallets.                                                                                      |
+The design enforces a hard boundary between decision logic and wallet logic:
 
+```
+┌─────────────────────────────────────┐
+│           AGENT LAYER               │
+│  Reads oracle, decides action,      │
+│  calls wallet API                   │
+│  (no keys, no raw tx building)      │
+└────────────────┬────────────────────┘
+                 │  executeTransaction(agentId, tx, description)
+                 ▼
+┌─────────────────────────────────────┐
+│         TRANSACTION ENGINE          │
+│  Rate limit check                   │
+│  Simulate against devnet            │
+│  Call KeyVault.sign()               │
+│  Broadcast                          │
+└────────────────┬────────────────────┘
+                 │  sign(agentId, tx)
+                 ▼
+┌─────────────────────────────────────┐
+│            KEY VAULT                │
+│  Decrypt seed (Argon2id + AES-GCM)  │
+│  Derive key for agentId             │
+│  Sign transaction                   │
+│  Zero key buffer                    │
+│  Return signed tx                   │
+└─────────────────────────────────────┘
+```
 
+This separation means the wallet and security layer can be hardened and audited independently of whatever decision logic agents run.
+
+### 3.2 Automated Signing Flow (No Manual Input)
+
+When an agent decides to act, the full flow runs without human intervention:
+
+1. **Agent logic triggers** on a timer (every 10–60 seconds depending on agent type)
+2. **Decision is made** — deterministic rules evaluate oracle data (e.g. spread between pool price and market price)
+3. **Transaction is built** — via `WalletManager.buildTransferTransaction()` or Orca adapter
+4. **`TransactionEngine.executeTransaction(agentId, tx, description)`** is called
+5. **Rate limit checked** — rejected if window is exceeded
+6. **Simulated** — rejected if devnet simulation fails
+7. **`KeyVault.sign({ agentId, tx })`** called — seed decrypted, key derived, tx signed, buffer zeroed
+8. **Broadcast** to devnet
+9. **Memo written** — decision rationale logged to Solana Memo program on-chain
+
+The `MASTER_PASSPHRASE` in `.env` is the only credential involved. No human prompt, no approval step, no manual key handling.
+
+### 3.3 Decision-Making: Deterministic Rules, Optional LLM
+
+Agent decisions are driven by deterministic logic — not by an LLM. For example, a trader evaluates whether the spread between pool price and oracle price exceeds a threshold, then decides to buy or sell. This keeps behavior predictable and safe.
+
+The optional `OPENAI_API_KEY` enables an LLM step that generates a human-readable rationale for the decision (e.g. *"Buying SOL: pool price 2.3% below oracle, within risk limits"*). This rationale is written to the Solana Memo program on-chain. The LLM has no ability to authorize or modify transactions — it is purely observational.
+
+This design avoids the prompt injection risk that would exist if an LLM could directly trigger or modify spending decisions.
+
+### 3.4 Scalability: Multiple Independent Agents
+
+Each agent has a distinct `agentId` and a distinct HD derivation index, giving it an isolated wallet and balance. All agents share one `KeyVault` but cannot access each other's keys — signing requests are scoped to `agentId`.
+
+**Default colony (6 agents):**
+
+| Agent ID | Kind | Role |
+|---|---|---|
+| `vault` | VaultAgent | Profit sink; receives USDC from traders |
+| `funder` | FunderAgent | Holds SOL/USDC reserves; tops up other agents |
+| `pool` | PoolAgent | Liquidity counterparty for SOL/USDC swaps |
+| `trader` | TraderAgent | Autonomous SOL/USDC trader |
+| `trader2` | TraderAgent | Autonomous SOL/USDC trader |
+| `trader3` | TraderAgent | Autonomous SOL/USDC trader |
+
+**Adding agents:**
+- Override `AGENT_IDS` in `.env` (e.g. `AGENT_IDS=vault,funder,pool,trader,trader2,trader3,trader4,trader5`)
+- Or use the **Scale the colony** panel on the dashboard at runtime — the funder provisions each new trader automatically (0.2 SOL + 10k USDC)
+
+Because `getAgentKind()` in `agentRegistry.ts` resolves agent type from ID prefix, any `traderN` ID is automatically treated as a trader with no code changes.
+
+**Stress test:** `npm run colony:stress` runs 9+ agents with `DRY_RUN=true` — full decision pipeline, circuit breakers, and simulation run, but no transactions are broadcast.
+
+---
+
+## 4. Design Decisions
+
+### 4.1 HD Derivation vs. Separate Key Files
+
+Per-agent key files would require backing up N secrets, coordinating N passphrases, and managing N recovery flows. HD derivation from a single seed means one backup restores everything. It's the same model used in production multi-account wallets, and it scales to arbitrarily many agents without touching the security model.
+
+### 4.2 Argon2id vs. PBKDF2 / bcrypt
+
+PBKDF2 and bcrypt are parallelizable on GPUs. Argon2id is memory-hard — it requires a minimum amount of RAM per attempt, which makes GPU and ASIC brute-force attacks expensive rather than just slow. For a passphrase-encrypted key vault, this is the right tradeoff.
+
+### 4.3 On-Chain Memos as Audit Trail
+
+Every agent decision is written to the Solana Memo program alongside the transaction it authorizes. This means "who decided what, when, and why" is verifiable on-chain — not just in local logs or the dashboard. A judge can take any wallet address, inspect it on Solscan (devnet), and read the agent's reasoning directly from the transaction.
+
+### 4.4 What a Production System Would Add
+
+This is a devnet prototype. A production deployment would add:
+
+- **Trusted Execution Environment (TEE)** — e.g. Intel SGX or AWS Nitro Enclaves. The vault and signing operation would run inside a hardware-attested enclave, making key exfiltration from a compromised host significantly harder.
+- **Multi-party computation (MPC) or threshold signatures** — for high-value agents, require M-of-N participants to authorize a transaction rather than a single vault. No single compromise can produce a valid signature.
+- **Hardware Security Module (HSM)** — for institutional deployments, move key material off the host entirely into a dedicated tamper-resistant device.
+- **Policy engine** — declarative per-agent spending rules (max transaction size, allowed programs, allowed counterparties) enforced before signing.
+
+---
+
+## 5. Verifying the Claims
+
+Each major claim in this document maps to something inspectable:
+
+| Claim | How to verify |
+|---|---|
+| Agents have independent on-chain wallets | `npm run show-agent-addresses` or dashboard — each card shows a unique address |
+| Real transactions on devnet | Click any address on the dashboard → Solscan devnet → recent transactions |
+| Memo-logged decisions | Solscan → any tx → "Memo" instruction → agent rationale in plaintext |
+| Orca Whirlpools swaps | Solscan → trader wallet → filter by Orca Whirlpools program ID |
+| Rate limiting enforced | `npm test` — circuit breaker tests pass; `npm run test:security` |
+| Simulate-before-send | `src/transactions/TransactionEngine.ts` — simulation precedes every broadcast |
+| No key export API | `src/vault/KeyVault.ts` — no method returns key material; only `sign()` is exposed |
+| Argon2id + AES-256-GCM | `src/vault/crypto.ts` |
