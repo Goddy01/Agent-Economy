@@ -979,7 +979,7 @@ function VaultProfitHistoryView({
   onBack: () => void;
 }) {
   const entries = [...(state.vaultProfitHistory ?? [])].sort((a, b) => b.t - a.t);
-  const totalSol = entries.reduce((s, e) => s + e.amount, 0);
+  const totalUsdc = entries.reduce((s, e) => s + (e.amountUsdc ?? e.amount), 0);
 
   return (
     <main className="max-w-[1600px] mx-auto p-6 space-y-6">
@@ -1002,7 +1002,7 @@ function VaultProfitHistoryView({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 rounded-xl bg-white/5 border border-white/5">
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Total contributions</p>
-            <p className="text-lg font-mono text-emerald-400">{formatNum(totalSol, 4)} SOL</p>
+            <p className="text-lg font-mono text-emerald-400">{formatNum(totalUsdc, 2)} USDC</p>
           </div>
           <div>
             <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">Contributions</p>
@@ -1035,7 +1035,7 @@ function VaultProfitHistoryView({
                         {new Date(entry.t).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium', hour12: false })}
                       </td>
                       <td className="px-4 py-3 text-white/80">{fromName}</td>
-                      <td className="px-4 py-3 font-mono text-emerald-400">+{formatNum(entry.amount, 4)} SOL</td>
+                      <td className="px-4 py-3 font-mono text-emerald-400">+{formatNum(entry.amountUsdc ?? entry.amount, entry.amountUsdc != null ? 2 : 4)} USDC</td>
                       <td className="px-4 py-3">
                         {entry.signature ? (
                           <a
@@ -1936,7 +1936,7 @@ function AgentCard({
                               </td>
                               <td className="px-2 py-1.5 text-white/80">{fromName}</td>
                               <td className="px-2 py-1.5 font-mono text-emerald-400">
-                                +{entry.amountUsdc != null ? formatNum(entry.amountUsdc, 2) : formatNum(entry.amount, 4)} {entry.amountUsdc != null ? 'USDC' : 'SOL'}
+                                +{formatNum(entry.amountUsdc ?? entry.amount, entry.amountUsdc != null ? 2 : 4)} USDC
                               </td>
                               <td className="px-2 py-1.5">
                                 {entry.signature ? (
