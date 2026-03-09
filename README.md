@@ -111,6 +111,7 @@ cd Agent-Economy
 npm install
 cp .env.example .env
 ```
+(The repo uses npm workspaces; one `npm install` at the root installs both the main app and the dashboard.)
 
 ### Step 2 - Set your passphrase
 
