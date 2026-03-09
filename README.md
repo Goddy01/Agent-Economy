@@ -191,6 +191,18 @@ Open **[http://localhost:3555](http://localhost:3555)**. Within **1-2 minutes** 
 
 Each trader added from the dashboard is funded automatically by the funder (0.2 SOL + 10k USDC).
 
+**Trader presets (Scale the colony)**  
+In the dashboard you can pick a **preset** before adding traders, or use **Custom** to set values yourself:
+
+| Preset | Trade size (SOL) | Min spread to trade | Tick interval |
+|--------|------------------|----------------------|---------------|
+| **Conservative** | 0.02 | 0.1% | 30 s |
+| **Balanced** | 0.05 | 0.05% | 20 s |
+| **Aggressive** | 0.1 | 0.03% | 10 s |
+| **Custom** | You set trade size and min spread | — | — |
+
+Conservative traders wait for a wider spread and trade less often with smaller size; aggressive traders tick faster and need a smaller spread to act.
+
 ---
 
 ## Dashboard Screenshots
