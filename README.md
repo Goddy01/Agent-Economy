@@ -205,6 +205,14 @@ Each trader has its own wallet address, SOL and USDC balance, volume (USD), real
 
 ![Traders](docs/screenshots/traders-cards.png)
 
+**Trader strategy (why the first trade can take a while)**  
+Traders use a **mean-reversion + spread** strategy. They only act when **both** conditions hold:
+
+- **Spread:** The bid–ask spread must exceed a threshold (e.g. 0.05%) so the trade can cover fees.
+- **Mean-reversion signal:** Price must deviate from the 24h average in the right direction: they **buy** when price is below the 24h average by at least a set percentage, and **sell** when price is above it by at least that amount.
+
+They evaluate every ~20 seconds (trader tick). If spread is too tight or there is no clear mean-reversion signal, they **hold** and wait. So it can take one or more minutes before the first trade appears; this is expected. See [DEEP_DIVE.md](./DEEP_DIVE.md) for the full decision logic.
+
 **Live SOL/USDC price chart**
 Buy (green) and sell (red) markers with trader labels (T1, T2, T3) confirm independent agent decisions against a shared price feed.
 

@@ -180,7 +180,14 @@ The `MASTER_PASSPHRASE` in `.env` is the only credential involved. No human prom
 
 ### 3.3 Decision-Making: Deterministic Rules, Optional LLM
 
-Agent decisions are driven by deterministic logic - not by an LLM. For example, a trader evaluates whether the spread between pool price and oracle price exceeds a threshold, then decides to buy or sell. This keeps behavior predictable and safe.
+Agent decisions are driven by deterministic logic - not by an LLM.
+
+**Trader strategy: mean-reversion + spread.** Traders only buy or sell when two conditions are met:
+
+1. **Spread above threshold** – The oracle bid–ask spread must exceed a minimum (e.g. 0.05%). This ensures the trade can cover fees; otherwise the agent holds and reports e.g. *"Spread X% below threshold. Waiting."*
+2. **Mean-reversion signal** – Price must deviate from the 24h average in the right direction: **buy** when price is *below* the 24h average by at least a configurable threshold (e.g. 0.5%); **sell** when price is *above* the 24h average by at least that amount. No trade if the deviation is in the wrong direction or too small.
+
+Sells additionally require the trader to have an open SOL position (they must have bought first). Each trader runs a **tick loop** (default ~20s); on each tick it evaluates the oracle, then either issues a SWAP, sends profit to the vault, or HOLDs. Because both spread and mean-reversion must align, **it can take several ticks (e.g. one or more minutes) before the first trade** – this is expected and documented in the README.
 
 The optional `OPENAI_API_KEY` enables an LLM step that generates a human-readable rationale for the decision (e.g. *"Buying SOL: pool price 2.3% below oracle, within risk limits"*). This rationale is written to the Solana Memo program on-chain. The LLM has no ability to authorize or modify transactions - it is purely observational.
 

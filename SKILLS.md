@@ -28,7 +28,7 @@ Every on-chain action can be accompanied by a Solana Memo log entry, creating a 
 
 | Agent ID | Behavior | Tick Rate | Risk Level |
 |---|---|---|---|
-| `trader` | Spread trader - buys/sells SOL against the pool | 20s | Medium |
+| `trader` | Spread + mean-reversion: buys when price below 24h avg, sells when above; only when spread exceeds threshold (see README / DEEP_DIVE) | 20s | Medium |
 | `pool` | Liquidity reserve (SOL + USDC); passive counterparty | Event-driven, no tick | Passive |
 | `funder` | Holds SOL + USDC reserves; distributes to pool and traders | 45s | Low |
 | `vault` | Treasury; receives USDC profit from traders only | 60s | Locked |
